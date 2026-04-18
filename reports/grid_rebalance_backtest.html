@@ -252,6 +252,13 @@
                 <label>每次调仓比例 (%)</label>
                 <input type="number" id="cfg_trade_ratio" value="20" min="5" max="50" step="5">
             </div>
+            <div class="field" style="margin-bottom:0;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="cfg_dividend_tax" checked style="width:16px;height:16px;accent-color:var(--primary);">
+                    <span>启用红利税计算</span>
+                </label>
+                <div style="font-size:10px;color:var(--text-muted);margin-top:4px;padding-left:24px;">持股≤1月20% / ≤1年10% / >1年免征</div>
+            </div>
         </div>
 
         <button class="btn-run" id="btnRun" onclick="runBacktest()">▶ 执行回测</button>
@@ -262,7 +269,8 @@
             ③ 成交后P更新为成交价<br/>
             ④ 除息日P下调等额分红<br/>
             ⑤ 周期末等权归齐，P重置为收盘价<br/>
-            <span style="color:#64748b;">手续费：万0.854(0.5起免5) + 卖出印花税千0.5</span>
+            <span style="color:#64748b;">手续费：万0.854(0.5起免5) + 卖出印花税千0.5</span><br/>
+            <span style="color:#64748b;">红利税：卖出时按先进先出补扣（≤1月20% / ≤1年10% / >1年免）</span>
         </div>
     </div>
 
@@ -304,6 +312,10 @@
                 <div class="card-title">再平准次数</div>
                 <div class="card-value" id="m_rebalances" style="font-size:20px;">--</div>
             </div>
+            <div class="card">
+                <div class="card-title">累计红利补税</div>
+                <div class="card-value negative" id="m_div_tax" style="font-size:20px;">--</div>
+            </div>
         </div>
 
         <div class="chart-container">
@@ -330,6 +342,7 @@
                             <th>股数</th>
                             <th>金额</th>
                             <th>手续费</th>
+                            <th>红利补税</th>
                         </tr>
                     </thead>
                     <tbody id="tradeLogBody"></tbody>
@@ -535,7 +548,8 @@ async function runBacktest() {
             capital: parseFloat(document.getElementById('cfg_capital').value) || 30000,
             gridPct: (parseFloat(document.getElementById('cfg_grid_pct').value) || 5) / 100,
             tradeRatio: (parseFloat(document.getElementById('cfg_trade_ratio').value) || 20) / 100,
-            rebalancePeriod: getRebalancePeriod()
+            rebalancePeriod: getRebalancePeriod(),
+            dividendTax: document.getElementById('cfg_dividend_tax').checked
         };
 
         let result = executeBacktest(config);
@@ -552,7 +566,7 @@ async function runBacktest() {
 }
 
 function executeBacktest(config) {
-    let { banks, start, end, capital, gridPct, tradeRatio, rebalancePeriod } = config;
+    let { banks, start, end, capital, gridPct, tradeRatio, rebalancePeriod, dividendTax } = config;
 
     let merged = {};
     let allDates = new Set();
@@ -611,8 +625,10 @@ function executeBacktest(config) {
     let cash = capital;
     let portfolio = {};
     let baseP = {};
+    let lots = {};
     let totalFees = 0;
     let totalDividend = 0;
+    let totalDivTax = 0;
     let totalTrades = 0;
     let totalRebalances = 0;
     let tradeLog = [];
@@ -625,6 +641,7 @@ function executeBacktest(config) {
     let initDetails = {};
 
     for (let s of banks) {
+        lots[s] = [];
         let row = merged[s][firstDate];
         if (!row || !row.Close) continue;
         let price = row.Close;
@@ -638,13 +655,74 @@ function executeBacktest(config) {
             baseP[s] = price;
             totalFees += fees;
             totalTrades++;
-            tradeLog.push({ date: firstDate, stock: s, type: 'init_buy', price, shares, amount: cost, fees });
+            lots[s].push({ date: firstDate, shares: shares, divReceived: 0 });
+            tradeLog.push({ date: firstDate, stock: s, type: 'init_buy', price, shares, amount: cost, fees, divTax: 0 });
             initDetails[s] = { shares, price, cost: cost + fees };
         } else {
             portfolio[s] = 0;
             baseP[s] = price;
             initDetails[s] = { shares: 0, price, cost: 0 };
         }
+    }
+
+    function calcDivTaxForSell(stock, sellShares, sellDate) {
+        if (!dividendTax || sellShares <= 0) return 0;
+        let tax = 0;
+        let remaining = sellShares;
+        let lotCopy = lots[stock].map(l => ({ ...l }));
+
+        for (let i = 0; i < lotCopy.length && remaining > 0; i++) {
+            let lot = lotCopy[i];
+            let consumed = Math.min(remaining, lot.shares);
+            if (consumed <= 0) continue;
+
+            let holdDays = (new Date(sellDate) - new Date(lot.date)) / (1000 * 60 * 60 * 24);
+            let rate = 0;
+            if (holdDays <= 30) {
+                rate = 0.20;
+            } else if (holdDays <= 365) {
+                rate = 0.10;
+            }
+
+            let divPerShare = lot.shares > 0 ? lot.divReceived / lot.shares : 0;
+            tax += divPerShare * consumed * rate;
+            remaining -= consumed;
+        }
+        return tax;
+    }
+
+    function consumeLots(stock, sellShares, sellDate) {
+        if (!dividendTax || sellShares <= 0) return 0;
+        let tax = 0;
+        let remaining = sellShares;
+
+        for (let i = 0; i < lots[stock].length && remaining > 0; ) {
+            let lot = lots[stock][i];
+            let consumed = Math.min(remaining, lot.shares);
+            if (consumed <= 0) { i++; continue; }
+
+            let holdDays = (new Date(sellDate) - new Date(lot.date)) / (1000 * 60 * 60 * 24);
+            let rate = 0;
+            if (holdDays <= 30) {
+                rate = 0.20;
+            } else if (holdDays <= 365) {
+                rate = 0.10;
+            }
+
+            let divPerShare = lot.shares > 0 ? lot.divReceived / lot.shares : 0;
+            tax += divPerShare * consumed * rate;
+
+            lot.shares -= consumed;
+            lot.divReceived -= divPerShare * consumed;
+            remaining -= consumed;
+
+            if (lot.shares <= 0) {
+                lots[stock].splice(i, 1);
+            } else {
+                i++;
+            }
+        }
+        return tax;
     }
 
     for (let i = 0; i < dates.length; i++) {
@@ -661,7 +739,10 @@ function executeBacktest(config) {
                 cash += income;
                 baseP[s] -= divCash;
                 totalDividend += income;
-                tradeLog.push({ date, stock: s, type: 'dividend', price: divCash, shares: portfolio[s], amount: income, fees: 0 });
+                for (let lot of lots[s]) {
+                    lot.divReceived += divCash * lot.shares;
+                }
+                tradeLog.push({ date, stock: s, type: 'dividend', price: divCash, shares: portfolio[s], amount: income, fees: 0, divTax: 0 });
             }
         }
 
@@ -689,7 +770,8 @@ function executeBacktest(config) {
                     baseP[s] = execPrice;
                     totalFees += fees;
                     totalTrades++;
-                    tradeLog.push({ date, stock: s, type: 'grid_buy', price: execPrice, shares: buyShares, amount: cost, fees });
+                    lots[s].push({ date: date, shares: buyShares, divReceived: 0 });
+                    tradeLog.push({ date, stock: s, type: 'grid_buy', price: execPrice, shares: buyShares, amount: cost, fees, divTax: 0 });
                 } else {
                     break;
                 }
@@ -706,13 +788,15 @@ function executeBacktest(config) {
 
                 let proceeds = sellShares * execPrice;
                 let fees = calcFees(proceeds, true);
+                let divTax = consumeLots(s, sellShares, date);
 
                 portfolio[s] -= sellShares;
-                cash += (proceeds - fees);
+                cash += (proceeds - fees - divTax);
                 baseP[s] = execPrice;
                 totalFees += fees;
+                totalDivTax += divTax;
                 totalTrades++;
-                tradeLog.push({ date, stock: s, type: 'grid_sell', price: execPrice, shares: sellShares, amount: proceeds, fees });
+                tradeLog.push({ date, stock: s, type: 'grid_sell', price: execPrice, shares: sellShares, amount: proceeds, fees, divTax });
             }
         }
 
@@ -743,17 +827,20 @@ function executeBacktest(config) {
                         cash -= (cost + fees);
                         totalFees += fees;
                         totalTrades++;
-                        rebalanceActions.push({ stock: s, type: 'rebalance_buy', shares: diff, price, fees });
+                        lots[s].push({ date: date, shares: diff, divReceived: 0 });
+                        rebalanceActions.push({ stock: s, type: 'rebalance_buy', shares: diff, price, fees, divTax: 0 });
                     }
                 } else if (diff < 0) {
                     let absDiff = Math.abs(diff);
                     let proceeds = absDiff * price;
                     let fees = calcFees(proceeds, true);
+                    let divTax = consumeLots(s, absDiff, date);
                     portfolio[s] = (portfolio[s] || 0) - absDiff;
-                    cash += (proceeds - fees);
+                    cash += (proceeds - fees - divTax);
                     totalFees += fees;
+                    totalDivTax += divTax;
                     totalTrades++;
-                    rebalanceActions.push({ stock: s, type: 'rebalance_sell', shares: absDiff, price, fees });
+                    rebalanceActions.push({ stock: s, type: 'rebalance_sell', shares: absDiff, price, fees, divTax });
                 }
 
                 baseP[s] = price;
@@ -766,7 +853,7 @@ function executeBacktest(config) {
                     tradeLog.push({
                         date, stock: a.stock, type: a.type,
                         price: a.price, shares: a.shares,
-                        amount: a.shares * a.price, fees: a.fees
+                        amount: a.shares * a.price, fees: a.fees, divTax: a.divTax
                     });
                 }
             }
@@ -803,25 +890,33 @@ function executeBacktest(config) {
     let bhCurve = [];
     let bhInitPerStock = capital / N;
     let bhShares = {};
+    let bhLots = {};
     let bhInitCost = 0;
     for (let s of banks) {
         let firstRow = merged[s][dates[0]];
-        if (!firstRow || !firstRow.Close) { bhShares[s] = 0; continue; }
+        if (!firstRow || !firstRow.Close) { bhShares[s] = 0; bhLots[s] = []; continue; }
         let sh = getClosestShares(bhInitPerStock, firstRow.Close);
         bhShares[s] = sh;
+        bhLots[s] = [{ date: dates[0], shares: sh, divReceived: 0 }];
         bhInitCost += sh * firstRow.Close + calcFees(sh * firstRow.Close, false);
     }
     let bhRemainingCash = Math.max(0, capital - bhInitCost);
     let bhDivTotal = 0;
+    let bhDivTaxTotal = 0;
     for (let i = 0; i < dates.length; i++) {
         let date = dates[i];
-        let bhValue = bhRemainingCash + bhDivTotal;
+        let bhValue = bhRemainingCash + bhDivTotal - bhDivTaxTotal;
         for (let s of banks) {
             let row = merged[s][date];
             if (!row) continue;
             bhValue += (bhShares[s] || 0) * row.Close;
             let dc = parseFloat(row.DivCash);
-            if (!isNaN(dc) && dc > 0) bhDivTotal += (bhShares[s] || 0) * dc;
+            if (!isNaN(dc) && dc > 0 && bhShares[s] > 0) {
+                bhDivTotal += (bhShares[s] || 0) * dc;
+                for (let lot of bhLots[s]) {
+                    lot.divReceived += dc * lot.shares;
+                }
+            }
         }
         bhCurve.push({ date, value: bhValue });
     }
@@ -845,10 +940,10 @@ function executeBacktest(config) {
     return {
         equityCurve, allocationHistory, tradeLog, rebalanceDates, bhCurve,
         totalReturn, annualReturn, maxDrawdown, finalValue,
-        totalFees, totalDividend, totalTrades, totalRebalances,
+        totalFees, totalDividend, totalDivTax, totalTrades, totalRebalances,
         initDetails, capital, dates,
         bhTotalReturn, bhAnnualReturn, bhMaxDrawdown, bhFinalValue,
-        excessReturn, excessAnnual
+        excessReturn, excessAnnual, dividendTax
     };
 }
 
@@ -886,6 +981,7 @@ function renderResults(result, config) {
     document.getElementById('m_dividend').innerText = '+¥' + result.totalDividend.toFixed(0);
     document.getElementById('m_trades').innerText = result.totalTrades;
     document.getElementById('m_rebalances').innerText = result.totalRebalances;
+    document.getElementById('m_div_tax').innerText = result.dividendTax ? '-¥' + result.totalDivTax.toFixed(0) : '未启用';
 
     renderEquityChart(result, config);
     renderAllocationChart(result, config);
@@ -1097,6 +1193,7 @@ function renderTradeLog(result) {
             <td>${t.shares}</td>
             <td>¥${t.amount.toFixed(0)}</td>
             <td>¥${t.fees.toFixed(2)}</td>
+            <td>${t.divTax > 0 ? '-¥' + t.divTax.toFixed(2) : ''}</td>
         `;
         fragment.appendChild(tr);
     }
