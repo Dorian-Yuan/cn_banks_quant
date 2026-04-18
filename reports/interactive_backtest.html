@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>银行股动态网格回测系统</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg-color: #f8fafc;
+            --panel-bg: #ffffff;
+            --border-color: #e2e8f0;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --success: #16a34a;
+            --danger: #dc2626;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background-color: var(--bg-color); color: var(--text-main); }
+        .dashboard { display: flex; height: 100vh; overflow: hidden; }
+        .sidebar { width: 360px; background: var(--panel-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow-y: auto; }
+        .header { padding: 20px; border-bottom: 1px solid var(--border-color); background: #f1f5f9; }
+        .header h2 { font-size: 20px; font-weight: 600; color: #0f172a; margin-bottom: 5px; }
+        .header p { font-size: 13px; color: var(--text-muted); }
+        .control-group { padding: 20px; border-bottom: 1px solid var(--border-color); }
+        .control-group h3 { font-size: 14px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 15px; letter-spacing: 0.5px; }
+        .field { margin-bottom: 15px; }
+        .field label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+        .field select, .field input { width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; outline: none; transition: border-color 0.2s; }
+        .field select:focus, .field input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+        .row { display: flex; gap: 10px; }
+        .row .field { flex: 1; margin-bottom: 0; }
+        .radio-group { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+        .radio-group label { display: flex; align-items: center; gap: 4px; font-weight: normal; margin-bottom: 0; cursor: pointer; white-space: nowrap; }
+        .btn-run { display: block; width: calc(100% - 40px); margin: 20px; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn-run:hover { background: var(--primary-hover); }
+        
+        .main-content { flex: 1; padding: 30px; overflow-y: auto; display: flex; flex-direction: column; gap: 30px; }
+        .metrics-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+        .card { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .card-title { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; font-weight: 500; }
+        .card-value { font-size: 28px; font-weight: 700; }
+        .positive { color: var(--success); }
+        .negative { color: var(--danger); }
+        .fee-cal { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+        
+        .chart-container { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; flex: 1; min-height: 500px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        #chart { width: 100%; height: 100%; }
+        
+        .loading { display: none; text-align: center; color: var(--primary); font-weight: 600; padding: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <div class="sidebar">
+        <div class="header">
+            <h2>量化网格实验台</h2>
+            <p>实时分析与交互式参数调优</p>
+        </div>
+        
+        <div class="control-group">
+            <h3>资产与时间</h3>
+            <div class="field">
+                <label>交易标的 (A股银行)</label>
+                <select id="sim_symbol">
+                    <option value="000001">000001 (平安银行)</option>
+                    <option value="600036">600036 (招商银行)</option>
+                    <option value="601288">601288 (农业银行)</option>
+                    <option value="601328">601328 (交通银行)</option>
+                    <option value="601398">601398 (工商银行)</option>
+                    <option value="601939">601939 (建设银行)</option>
+                    <option value="601988" selected>601988 (中国银行)</option>
+                    <option value="600015">600015 (华夏银行)</option>
+                    <option value="601166">601166 (兴业银行)</option>
+                    <option value="600919">600919 (江苏银行)</option>
+                    <option value="600000">600000 (浦发银行)</option>
+                    <option value="601818">601818 (光大银行)</option>
+                </select>
+            </div>
+            <div class="row">
+                <div class="field">
+                    <label>起始日期</label>
+                    <input type="date" id="sim_start" value="2021-04-13">
+                </div>
+                <div class="field">
+                    <label>结束日期</label>
+                    <input type="date" id="sim_end" value="2026-04-13">
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>网格策略参数</h3>
+            <div class="field">
+                <label>触发模式</label>
+                <div class="radio-group" style="margin-bottom: 10px;">
+                    <label><input type="radio" name="sim_mode" value="absolute" checked> 绝对值(元)</label>
+                    <label><input type="radio" name="sim_mode" value="relative"> 比例(%)</label>
+                </div>
+            </div>
+            <div class="field">
+                <label>网格步长 / 幅度</label>
+                <input type="number" id="sim_step" value="0.05" step="0.01">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>资金与仓位管理</h3>
+            <div class="field">
+                <label>红利所得综合税率 (%) (0为免税)</label>
+                <input type="number" id="sim_div_tax" value="0" step="1" min="0" max="20">
+            </div>
+            <div class="field">
+                <label>初始总资金 (元)</label>
+                <input type="number" id="sim_capital" value="30000">
+            </div>
+            <div class="field">
+                <label>首日底仓配置方式</label>
+                <div class="radio-group" style="margin-bottom: 10px;">
+                    <label><input type="radio" name="sim_base_type" value="money" checked> 按金额(元)</label>
+                    <label><input type="radio" name="sim_base_type" value="shares"> 按数量(股)</label>
+                </div>
+                <input type="number" id="sim_base_val" value="15000">
+            </div>
+            <div class="field">
+                <label>永久锁仓底线保障 (元)</label>
+                <input type="number" id="sim_min_base" value="10000">
+                <div class="fee-cal" style="margin-top: 4px;">按首日建仓折算死锁股数，该底仓绝不卖出</div>
+            </div>
+            <div class="field">
+                <label>每次触发加减仓配额</label>
+                <div class="radio-group" style="margin-bottom: 10px;">
+                    <label><input type="radio" name="sim_trade_type" value="percent" checked> 底仓比例(%)</label>
+                    <label><input type="radio" name="sim_trade_type" value="shares"> 固定量(股)</label>
+                </div>
+                <input type="number" id="sim_trade_val" value="10">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>定投策略 (DCA)</h3>
+            <div class="field">
+                <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                    <input type="checkbox" id="sim_dca_enable" style="width: auto;" onchange="toggleDCA()"> 按期自动触发加注定投
+                </label>
+            </div>
+            <div id="dca_panel" style="display: none; margin-top: 10px;">
+                <div class="field">
+                    <label>定投频率</label>
+                    <select id="sim_dca_freq">
+                        <option value="daily">每日</option>
+                        <option value="weekly" selected>每周 (每周三执行)</option>
+                        <option value="monthly">每月 (每月6号执行)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>每期基准定投金额 (元)</label>
+                    <input type="number" id="sim_dca_amount" value="1500" step="100">
+                </div>
+                <div class="field">
+                    <label>买入剩余碎银子处理规则</label>
+                    <div class="radio-group" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <label><input type="radio" name="sim_dca_leftover" value="discard" checked> 只买最大股数 (仅此笔扣款计入总投入)</label>
+                        <label><input type="radio" name="sim_dca_leftover" value="pool"> 全部划入总投入，残差存入"网格现金池"</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-run" onclick="runSimulation()">执行回测</button>
+        <div id="loading" class="loading">正在加载数据并极速计算中...</div>
+    </div>
+
+    <div class="main-content">
+        <div class="metrics-cards">
+            <div class="card">
+                <div class="card-title">总收益率 (Return)</div>
+                <div class="card-value" id="val_return">--</div>
+            </div>
+            <div class="card">
+                <div class="card-title">最大回撤 (MaxDD)</div>
+                <div class="card-value" id="val_drawdown">--</div>
+            </div>
+            <div class="card" style="border-top: 3px solid var(--primary);">
+                <div class="card-title">期末总资产净值 (NAV)</div>
+                <div class="card-value" id="val_final">--</div>
+            </div>
+            
+            <!-- 详细持仓对比行 -->
+            <div class="card">
+                <div class="card-title">初始状态 (建仓)</div>
+                <div class="card-value" id="val_init_shares" style="font-size: 20px;">--</div>
+                <div class="fee-cal" id="val_init_price">--</div>
+                <div class="fee-cal" id="val_init_cash">--</div>
+            </div>
+            <div class="card">
+                <div class="card-title">期末状态 (持有)</div>
+                <div class="card-value" id="val_final_shares" style="font-size: 20px;">--</div>
+                <div class="fee-cal" id="val_final_price">--</div>
+                <div class="fee-cal" id="val_final_cash">--</div>
+            </div>
+            <div class="card" style="background: rgba(37, 99, 235, 0.03);">
+                <div class="card-title">仓位/现金变动差额</div>
+                <div class="card-value" id="val_delta_shares" style="font-size: 20px;">--</div>
+                <div class="fee-cal" id="val_delta_cash" style="font-weight: 600;">--</div>
+            </div>
+
+            <div class="card" style="border-left: 4px solid var(--danger);">
+                <div class="card-title">摩擦损耗成本</div>
+                <div class="card-value negative" id="val_friction" style="font-size: 20px;">--</div>
+                <div class="fee-cal" id="val_trades">--</div>
+            </div>
+            <div class="card" style="border-left: 4px solid var(--success);">
+                <div class="card-title">净拿股息分红</div>
+                <div class="card-value positive" id="val_dividend_income" style="font-size: 20px;">--</div>
+                <div class="fee-cal">分红已并入现金池</div>
+            </div>
+            
+            <!-- 定投监控特权卡 -->
+            <div class="card" id="card_dca" style="display: none; border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.03);">
+                <div class="card-title">累计定投概览 (外部资金集资)</div>
+                <div class="card-value" id="val_dca_invested" style="font-size: 20px; color: #f59e0b;">--</div>
+                <div class="fee-cal" id="val_dca_shares">--</div>
+                <div class="fee-cal" id="val_dca_avg_price">--</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div id="chart"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let myChart = null;
+
+    function calcCommission(value, isSell) {
+        let comm = Math.max(0.5, value * 0.0000854);
+        let stamp = isSell ? value * 0.001 : 0;
+        return comm + stamp;
+    }
+
+    async function runSimulation() {
+        const btn = document.querySelector('.btn-run');
+        const loading = document.getElementById('loading');
+        btn.disabled = true;
+        loading.style.display = 'block';
+
+        try {
+            const config = {
+                symbol: document.getElementById('sim_symbol').value,
+                start: document.getElementById('sim_start').value,
+                end: document.getElementById('sim_end').value,
+                mode: document.querySelector('input[name="sim_mode"]:checked').value,
+                step: parseFloat(document.getElementById('sim_step').value),
+                divTax: parseFloat(document.getElementById('sim_div_tax').value) / 100,
+                capital: parseFloat(document.getElementById('sim_capital').value),
+                baseType: document.querySelector('input[name="sim_base_type"]:checked').value,
+                baseVal: parseFloat(document.getElementById('sim_base_val').value),
+                minBaseVal: parseFloat(document.getElementById('sim_min_base').value),
+                tradeType: document.querySelector('input[name="sim_trade_type"]:checked').value,
+                tradeVal: parseFloat(document.getElementById('sim_trade_val').value),
+                dcaEnable: document.getElementById('sim_dca_enable').checked,
+                dcaFreq: document.getElementById('sim_dca_freq').value,
+                dcaAmount: parseFloat(document.getElementById('sim_dca_amount').value),
+                dcaLeftover: document.querySelector('input[name="sim_dca_leftover"]:checked').value
+            };
+
+            // 注意跨域：请确保服务器根目录在项目根下，而非 reports/ 目录下 (加入时间戳强制缓存刷线)
+            const response = await fetch(`../data/ashare/${config.symbol}.csv?v=${new Date().getTime()}`);
+            if (!response.ok) throw new Error("无法加载CSV数据，请确保已在 Tetra_Compass 根目录挂载 HTTP Server！\n(例如执行: python -m http.server 8000)"); // fetch target
+            
+            const csvText = await response.text();
+            Papa.parse(csvText, {
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    processBacktest(results.data, config);
+                    btn.disabled = false;
+                    loading.style.display = 'none';
+                },
+                error: function() {
+                    btn.disabled = false;
+                    loading.style.display = 'none';
+                    alert("CSV 解析错误");
+                }
+            });
+        } catch (error) {
+            alert(error.message);
+            btn.disabled = false;
+            loading.style.display = 'none';
+        }
+    }
+
+    function processBacktest(data, config) {
+        let df = data.filter(r => r.Date >= config.start && r.Date <= config.end);
+        
+        if (df.length === 0) {
+            alert("选定的日期范围内没有数据！");
+            return;
+        }
+        
+        df.sort((a, b) => new Date(a.Date) - new Date(b.Date));
+
+        let p0 = df[0].Close;
+        if (!p0) return alert("首日数据缺少收盘价！");
+
+        let baseShares = 0;
+        if (config.baseType === 'money') {
+            baseShares = Math.floor(config.baseVal / p0 / 100) * 100;
+        } else {
+            baseShares = Math.floor(config.baseVal / 100) * 100;
+        }
+        if (baseShares === 0) return alert("底仓配置不足以买入甚至一单(100股)！");
+        
+        let lockedShares = Math.floor(config.minBaseVal / p0 / 100) * 100;
+        
+        let initialTradeVal = baseShares * p0;
+        let initialFee = calcCommission(initialTradeVal, false);
+        let startCash = config.capital - initialTradeVal - initialFee;
+        let currentCash = startCash;
+        let currentShares = baseShares;
+        let totalFriction = initialFee;
+        let totalTrades = 1;
+        let totalDividendIncome = 0;
+        
+        // DCA trackers
+        let totalInvestedCapital = config.capital;
+        let totalDcaInvested = 0;
+        let totalDcaShares = 0;
+        let lastDcaYearMonth = "";
+
+        let tradeShareSize = 0;
+        if (config.tradeType === 'percent') {
+            tradeShareSize = Math.floor((baseShares * (config.tradeVal / 100)) / 100) * 100;
+        } else {
+            tradeShareSize = Math.floor(config.tradeVal / 100) * 100;
+        }
+        
+        tradeShareSize = Math.max(100, tradeShareSize);
+
+        let dates = [df[0].Date];
+        let values = [currentCash + currentShares * p0];
+        let highestPeak = values[0];
+        let maxDrawdown = 0;
+
+        for (let i = 1; i < df.length; i++) {
+            let row = df[i];
+            let prevClose = df[i-1].Close;
+            
+            // --- DCA Logic / 定投买入执行机制 ---
+            if (config.dcaEnable && row.Close) {
+                let currentDate = new Date(row.Date);
+                let triggerDca = false;
+                
+                if (config.dcaFreq === 'daily') {
+                    triggerDca = true;
+                } else if (config.dcaFreq === 'weekly') {
+                    if (currentDate.getDay() === 3) triggerDca = true; // 周三
+                } else if (config.dcaFreq === 'monthly') {
+                    let currentYearMonth = currentDate.getFullYear() + "-" + currentDate.getMonth();
+                    if (currentYearMonth !== lastDcaYearMonth && currentDate.getDate() >= 6) {
+                        triggerDca = true;
+                        lastDcaYearMonth = currentYearMonth;
+                    }
+                }
+                
+                if (triggerDca) {
+                    let affordableShares = Math.floor(config.dcaAmount / row.Close / 100) * 100;
+                    if (affordableShares > 0) {
+                        let actualCost = affordableShares * row.Close;
+                        let fee = calcCommission(actualCost, false);
+                        let totalDeduct = actualCost + fee;
+                        let leftover = config.dcaAmount - totalDeduct;
+                        
+                        if (config.dcaLeftover === 'pool') {
+                            totalInvestedCapital += config.dcaAmount;
+                            totalDcaInvested += config.dcaAmount;
+                            currentCash += leftover; // 把剩余碎银子塞入现金池
+                        } else {
+                            totalInvestedCapital += totalDeduct;
+                            totalDcaInvested += totalDeduct;
+                        }
+                        currentShares += affordableShares;
+                        totalDcaShares += affordableShares;
+                        totalFriction += fee;
+                        totalTrades++;
+                    } else { // 买不起任何一手的微薄资本
+                        if (config.dcaLeftover === 'pool') {
+                            totalInvestedCapital += config.dcaAmount;
+                            totalDcaInvested += config.dcaAmount;
+                            currentCash += config.dcaAmount; // 全款硬塞现金池充当子弹
+                        }
+                    }
+                }
+            }
+
+            // 扫描处理今日分红除息现金派发事件
+            let divCash = parseFloat(row.DivCash);
+            if (!isNaN(divCash) && divCash > 0) {
+                // 基于日一晚未交易动过的股权配发现金
+                let income = currentShares * divCash * (1 - config.divTax);
+                currentCash += income;
+                totalDividendIncome += income;
+            }
+            
+            let buyPrice = 0, sellPrice = 0;
+            if (config.mode === 'absolute') {
+                buyPrice = prevClose - config.step;
+                sellPrice = prevClose + config.step;
+            } else {
+                buyPrice = prevClose * (1 - config.step / 100);
+                sellPrice = prevClose * (1 + config.step / 100);
+            }
+
+            // check Low trigger
+            if (row.Low && row.Low <= buyPrice) {
+                let tradeVal = tradeShareSize * buyPrice;
+                let fee = calcCommission(tradeVal, false);
+                let cost = tradeVal + fee;
+                
+                if (currentCash >= cost) {
+                    currentCash -= cost;
+                    currentShares += tradeShareSize;
+                    totalFriction += fee;
+                    totalTrades++;
+                }
+            }
+
+            // check High trigger
+            if (row.High && row.High >= sellPrice) {
+                if (currentShares - tradeShareSize >= lockedShares) {
+                    let tradeVal = tradeShareSize * sellPrice;
+                    let fee = calcCommission(tradeVal, true);
+                    currentCash += (tradeVal - fee);
+                    currentShares -= tradeShareSize;
+                    totalFriction += fee;
+                    totalTrades++;
+                }
+            }
+
+            let currentVal = currentCash + currentShares * row.Close;
+            dates.push(row.Date);
+            values.push(currentVal);
+
+            if (currentVal > highestPeak) highestPeak = currentVal;
+            let currentDd = (currentVal - highestPeak) / highestPeak;
+            if (currentDd < maxDrawdown) maxDrawdown = currentDd;
+        }
+
+        let finalVal = values[values.length - 1];
+        // The return formula uses dynamically grown totalInvestedCapital
+        let rtn = ((finalVal - totalInvestedCapital) / totalInvestedCapital) * 100;
+        
+        const rEl = document.getElementById('val_return');
+        rEl.innerText = rtn.toFixed(2) + '%';
+        rEl.className = 'card-value ' + (rtn >= 0 ? 'positive' : 'negative');
+        document.getElementById('val_drawdown').innerText = (maxDrawdown * 100).toFixed(2) + '%';
+        document.getElementById('val_final').innerText = finalVal.toFixed(2);
+        
+        // 更新详细状态卡片
+        const lastPrice = df[df.length-1].Close;
+        
+        // 1. 初始
+        document.getElementById('val_init_shares').innerText = baseShares + ' 股';
+        document.getElementById('val_init_price').innerText = `建仓价: ￥${p0.toFixed(2)}`;
+        document.getElementById('val_init_cash').innerText = `初始可用现金: ￥${startCash.toFixed(2)}`;
+        
+        // 2. 期末
+        document.getElementById('val_final_shares').innerText = currentShares + ' 股';
+        document.getElementById('val_final_price').innerText = `期末收盘价: ￥${lastPrice.toFixed(2)}`;
+        document.getElementById('val_final_cash').innerText = `期末剩余现金: ￥${currentCash.toFixed(2)}`;
+        
+        // 3. 差额
+        let sharesDiff = currentShares - baseShares;
+        let cashDiff = currentCash - startCash;
+        document.getElementById('val_delta_shares').innerText = (sharesDiff >= 0 ? '+' : '') + sharesDiff + ' 股';
+        document.getElementById('val_delta_cash').innerText = `现金变动: ` + (cashDiff >= 0 ? '+￥' : '-￥') + Math.abs(cashDiff).toFixed(2);
+        
+        document.getElementById('val_friction').innerText = '￥' + totalFriction.toFixed(2);
+        document.getElementById('val_trades').innerText = `共执行买卖动作: ${totalTrades}次`;
+        document.getElementById('val_dividend_income').innerText = '+￥' + totalDividendIncome.toFixed(2);
+        
+        // 动态展示或隐藏定投专属面板
+        const cardDca = document.getElementById('card_dca');
+        if (config.dcaEnable) {
+            cardDca.style.display = 'block';
+            document.getElementById('val_dca_invested').innerText = '+￥' + totalDcaInvested.toFixed(2);
+            document.getElementById('val_dca_shares').innerText = `斩获股数: +${totalDcaShares} 股`;
+            let avgPrice = totalDcaShares > 0 ? (totalDcaInvested / totalDcaShares).toFixed(2) : 0.00;
+            document.getElementById('val_dca_avg_price').innerText = `定投筹码均价: ￥${avgPrice} /股`;
+        } else {
+            cardDca.style.display = 'none';
+        }
+
+        renderChart(dates, values, config, totalInvestedCapital);
+    }
+
+    function renderChart(dates, values, config, finalInvestedCapital) {
+        if (!myChart) {
+            myChart = echarts.init(document.getElementById('chart'));
+        }
+        
+        const symSelect = document.getElementById('sim_symbol');
+        const symLabel = symSelect.options[symSelect.selectedIndex].text;
+        
+        const option = {
+            title: { text: symLabel + ' 动态净资产走势曲线', left: 'left' },
+            tooltip: { trigger: 'axis', valueFormatter: (val) => '￥' + val.toFixed(2) },
+            grid: { left: '3%', right: '4%', bottom: '5%', containLabel: true },
+            dataZoom: [{type: 'inside', start: 0, end: 100}, {start: 0, end: 100}],
+            xAxis: {
+                type: 'category',
+                boundaryGap: false,
+                data: dates,
+                axisLine: { lineStyle: { color: '#94a3b8' } }
+            },
+            yAxis: {
+                type: 'value',
+                min: 'dataMin',
+                splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }
+            },
+            series: [{
+                name: '总资金概算',
+                type: 'line',
+                smooth: true,
+                showSymbol: false,
+                data: values,
+                lineStyle: { width: 2, color: '#2563eb' },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(37,99,235,0.4)' },
+                        { offset: 1, color: 'rgba(37,99,235,0.0)' }
+                    ])
+                },
+                markLine: {
+                    data: [{ yAxis: finalInvestedCapital, name: '期末动态投本' }],
+                    lineStyle: { color: '#ef4444', type: 'dashed', width: 2 },
+                    label: { position: 'end', formatter: '总结算投入本金' }
+                }
+            }]
+        };
+
+        myChart.setOption(option);
+    }
+
+    function toggleDCA() {
+        const panel = document.getElementById('dca_panel');
+        panel.style.display = document.getElementById('sim_dca_enable').checked ? 'block' : 'none';
+    }
+
+    // Auto run on load, listener config
+    window.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('input[name="sim_mode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const stepInput = document.getElementById('sim_step');
+                if (e.target.value === 'absolute') stepInput.value = 0.05;
+                else stepInput.value = 0.1;
+            });
+        });
+        
+        // Let user resize chart cleanly
+        window.addEventListener('resize', () => {
+            if (myChart) myChart.resize();
+        });
+        
+        // Run first time
+        runSimulation();
+    });
+</script>
+
+</body>
+</html>

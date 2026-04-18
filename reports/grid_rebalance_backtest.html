@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>波段再平准策略 · 多银行网格回测系统</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-main); }
+        .dashboard { display: flex; height: 100vh; overflow: hidden; }
+
+        .sidebar {
+            width: 380px; min-width: 380px;
+            background: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex; flex-direction: column;
+            overflow-y: auto;
+        }
+        .sidebar::-webkit-scrollbar { width: 6px; }
+        .sidebar::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+
+        .header { padding: 20px; border-bottom: 1px solid var(--border-color); background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%); }
+        .header h2 { font-size: 20px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+        .header p { font-size: 12px; color: var(--text-muted); }
+
+        .control-group { padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
+        .control-group h3 { font-size: 12px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 1px; font-weight: 600; }
+
+        .field { margin-bottom: 12px; }
+        .field label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 5px; color: #cbd5e1; }
+        .field select, .field input[type="number"], .field input[type="date"] {
+            width: 100%; padding: 8px 12px;
+            background: #0f172a; border: 1px solid #475569; border-radius: 6px;
+            font-size: 14px; color: var(--text-main); outline: none;
+            transition: border-color 0.2s;
+        }
+        .field select:focus, .field input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
+
+        .row { display: flex; gap: 10px; }
+        .row .field { flex: 1; margin-bottom: 0; }
+
+        .bank-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .bank-check {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 10px; background: #0f172a; border: 1px solid #475569;
+            border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 13px;
+            position: relative;
+        }
+        .bank-check:hover {
+            border-color: var(--primary);
+        }
+        .bank-check.checked {
+            border-color: var(--primary); background: rgba(37, 99, 235, 0.1);
+        }
+        .bank-check input {
+            width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer;
+        }
+        .bank-check .bank-name {
+            font-size: 11px; color: var(--text-muted);
+        }
+        .bank-check .tooltip {
+            position: absolute; top: 100%; left: 0; margin-top: 8px;
+            background: #1e293b; border: 1px solid #475569; border-radius: 6px;
+            padding: 8px 10px; font-size: 11px; color: var(--text-main);
+            white-space: nowrap; z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            opacity: 0; visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+        }
+        .bank-check:hover .tooltip {
+            opacity: 1; visibility: visible;
+        }
+        .bank-check .tooltip:before {
+            content: ''; position: absolute; bottom: 100%; left: 10px;
+            border: 5px solid transparent;
+            border-bottom-color: #475569;
+        }
+        .bank-check .tooltip:after {
+            content: ''; position: absolute; bottom: 100%; left: 11px;
+            border: 4px solid transparent;
+            border-bottom-color: #1e293b;
+        }
+
+        .radio-group { display: flex; gap: 8px; }
+        .radio-group label {
+            display: flex; align-items: center; gap: 4px;
+            padding: 6px 14px; background: #0f172a; border: 1px solid #475569;
+            border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s;
+        }
+        .radio-group label:hover { border-color: var(--primary); }
+        .radio-group input { display: none; }
+        .radio-group input:checked + span { color: var(--primary); font-weight: 600; }
+        .radio-group label:has(input:checked) { border-color: var(--primary); background: rgba(37, 99, 235, 0.1); }
+
+        .btn-run {
+            display: block; width: calc(100% - 40px); margin: 20px;
+            padding: 12px; background: var(--primary); color: white;
+            border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .btn-run:hover { background: var(--primary-hover); }
+        .btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .capital-preview {
+            margin-top: 8px; padding: 10px; background: #0f172a;
+            border: 1px solid #475569; border-radius: 6px; font-size: 12px;
+            color: var(--text-muted); line-height: 1.8;
+        }
+        .capital-preview .highlight { color: var(--primary); font-weight: 600; }
+
+        .main-content { flex: 1; padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; }
+        .main-content::-webkit-scrollbar { width: 8px; }
+        .main-content::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+
+        .metrics-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+        .card {
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .card-title { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500; }
+        .card-value { font-size: 26px; font-weight: 700; }
+        .positive { color: var(--success); }
+        .negative { color: var(--danger); }
+        .card-sub { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+        .chart-container {
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 10px; padding: 16px; min-height: 420px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .chart-container .chart { width: 100%; height: 400px; }
+
+        .trade-log-section {
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .trade-log-header {
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; user-select: none;
+        }
+        .trade-log-header h3 { font-size: 14px; font-weight: 600; }
+        .trade-log-header .toggle { font-size: 12px; color: var(--text-muted); }
+        .trade-log-table {
+            width: 100%; border-collapse: collapse; margin-top: 12px;
+            font-size: 12px; display: none;
+        }
+        .trade-log-table.show { display: table; }
+        .trade-log-table th {
+            padding: 8px 10px; text-align: left; background: #0f172a;
+            color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border-color);
+            position: sticky; top: 0;
+        }
+        .trade-log-table td { padding: 6px 10px; border-bottom: 1px solid #1e293b; }
+        .trade-log-table tr:hover td { background: rgba(37, 99, 235, 0.05); }
+        .trade-log-body { max-height: 400px; overflow-y: auto; }
+        .buy-tag { color: var(--success); font-weight: 600; }
+        .sell-tag { color: var(--danger); font-weight: 600; }
+        .rebalance-tag { color: var(--warning); font-weight: 600; }
+        .dividend-tag { color: #a78bfa; font-weight: 600; }
+
+        .loading-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.8); z-index: 1000;
+            justify-content: center; align-items: center; flex-direction: column; gap: 16px;
+        }
+        .loading-overlay.show { display: flex; }
+        .spinner {
+            width: 40px; height: 40px; border: 3px solid #475569;
+            border-top-color: var(--primary); border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { color: var(--text-main); font-size: 14px; font-weight: 500; }
+    </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loadingText">正在加载数据...</div>
+</div>
+
+<div class="dashboard">
+    <div class="sidebar">
+        <div class="header">
+            <h2>📊 波段再平准策略</h2>
+            <p>多银行网格交易 · 交互式回测系统</p>
+        </div>
+
+        <div class="control-group">
+            <h3>⏱ 时间范围</h3>
+            <div class="row">
+                <div class="field">
+                    <label>起始日期</label>
+                    <input type="date" id="cfg_start" value="2019-12-10">
+                </div>
+                <div class="field">
+                    <label>结束日期</label>
+                    <input type="date" id="cfg_end" value="2026-04-14">
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>🏦 选入银行</h3>
+            <div class="bank-grid" id="bankGrid">
+                <label class="bank-check checked"><input type="checkbox" value="601398" checked><div><div>601398</div><div class="bank-name">工商银行</div></div><div class="tooltip" data-bank="601398"></div></label>
+                <label class="bank-check checked"><input type="checkbox" value="601288" checked><div><div>601288</div><div class="bank-name">农业银行</div></div><div class="tooltip" data-bank="601288"></div></label>
+                <label class="bank-check checked"><input type="checkbox" value="601988" checked><div><div>601988</div><div class="bank-name">中国银行</div></div><div class="tooltip" data-bank="601988"></div></label>
+                <label class="bank-check checked"><input type="checkbox" value="601939" checked><div><div>601939</div><div class="bank-name">建设银行</div></div><div class="tooltip" data-bank="601939"></div></label>
+                <label class="bank-check checked"><input type="checkbox" value="601328" checked><div><div>601328</div><div class="bank-name">交通银行</div></div><div class="tooltip" data-bank="601328"></div></label>
+                <label class="bank-check checked"><input type="checkbox" value="601658" checked><div><div>601658</div><div class="bank-name">邮储银行</div></div><div class="tooltip" data-bank="601658"></div></label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>🔄 再平准周期</h3>
+            <div class="radio-group">
+                <label><input type="radio" name="cfg_rebalance" value="month"><span>月</span></label>
+                <label><input type="radio" name="cfg_rebalance" value="quarter" checked><span>季</span></label>
+                <label><input type="radio" name="cfg_rebalance" value="year"><span>年</span></label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>💰 资金与仓位</h3>
+            <div class="field">
+                <label>初始总资金 (元)</label>
+                <input type="number" id="cfg_capital" value="30000" min="1000" step="1000">
+            </div>
+            <div class="capital-preview" id="capitalPreview">选择银行后自动计算分配方案</div>
+            <div class="field">
+                <label>网格触发百分比 (%)</label>
+                <input type="number" id="cfg_grid_pct" value="5" min="1" max="20" step="0.5">
+            </div>
+            <div class="field">
+                <label>每次调仓比例 (%)</label>
+                <input type="number" id="cfg_trade_ratio" value="20" min="5" max="50" step="5">
+            </div>
+        </div>
+
+        <button class="btn-run" id="btnRun" onclick="runBacktest()">▶ 执行回测</button>
+        <div style="padding: 0 20px 20px; font-size: 11px; color: var(--text-muted); line-height: 1.7;">
+            <b style="color:#cbd5e1;">策略规则：</b><br/>
+            ① 首日等分资金买入，P=收盘价<br/>
+            ② 日内触及P±网格%→买卖持仓×调仓比<br/>
+            ③ 成交后P更新为成交价<br/>
+            ④ 除息日P下调等额分红<br/>
+            ⑤ 周期末等权归齐，P重置为收盘价<br/>
+            <span style="color:#64748b;">手续费：万0.854(0.5起免5) + 卖出印花税千0.5</span>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="metrics-cards" id="metricsCards">
+            <div class="card">
+                <div class="card-title">总收益率</div>
+                <div class="card-value" id="m_return">--</div>
+                <div class="card-sub" id="m_return_sub"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">年化收益率</div>
+                <div class="card-value" id="m_annual">--</div>
+                <div class="card-sub" id="m_annual_sub"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">最大回撤</div>
+                <div class="card-value" id="m_drawdown">--</div>
+                <div class="card-sub" id="m_drawdown_sub"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">期末总资产</div>
+                <div class="card-value" id="m_final" style="font-size:22px;">--</div>
+                <div class="card-sub" id="m_final_sub"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">累计手续费</div>
+                <div class="card-value negative" id="m_fees" style="font-size:20px;">--</div>
+            </div>
+            <div class="card">
+                <div class="card-title">累计分红收入</div>
+                <div class="card-value positive" id="m_dividend" style="font-size:20px;">--</div>
+            </div>
+            <div class="card">
+                <div class="card-title">网格交易次数</div>
+                <div class="card-value" id="m_trades" style="font-size:20px;">--</div>
+            </div>
+            <div class="card">
+                <div class="card-title">再平准次数</div>
+                <div class="card-value" id="m_rebalances" style="font-size:20px;">--</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div id="chartEquity" class="chart"></div>
+        </div>
+
+        <div class="chart-container">
+            <div id="chartAllocation" class="chart"></div>
+        </div>
+
+        <div class="trade-log-section">
+            <div class="trade-log-header" onclick="toggleTradeLog()">
+                <h3>📋 交易日志</h3>
+                <span class="toggle" id="logToggle">▶ 展开</span>
+            </div>
+            <div class="trade-log-body">
+                <table class="trade-log-table" id="tradeLogTable">
+                    <thead>
+                        <tr>
+                            <th>日期</th>
+                            <th>股票</th>
+                            <th>类型</th>
+                            <th>价格</th>
+                            <th>股数</th>
+                            <th>金额</th>
+                            <th>手续费</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradeLogBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const BANK_NAMES = {
+    "601398": "工商银行", "601288": "农业银行", "601988": "中国银行",
+    "601939": "建设银行", "601328": "交通银行", "601658": "邮储银行"
+};
+const BANK_COLORS = {
+    "601398": "#ef4444", "601288": "#22c55e", "601988": "#f59e0b",
+    "601939": "#3b82f6", "601328": "#a855f7", "601658": "#06b6d4"
+};
+
+const COMMISSION_RATE = 0.0000854;
+const MIN_COMMISSION = 0.5;
+const STAMP_DUTY_RATE = 0.0005;
+
+let chartEquity = null;
+let chartAllocation = null;
+let allBankData = {};
+let lastBacktestResult = null;
+
+function calcFees(amount, isSell) {
+    let comm = Math.max(MIN_COMMISSION, amount * COMMISSION_RATE);
+    let stamp = isSell ? amount * STAMP_DUTY_RATE : 0;
+    return comm + stamp;
+}
+
+function getClosestShares(targetAmount, price) {
+    if (price <= 0) return 0;
+    let rawShares = targetAmount / price;
+    let lowShares = Math.floor(rawShares / 100) * 100;
+    let highShares = lowShares + 100;
+    if (lowShares === 0) return highShares;
+    if (Math.abs(lowShares * price - targetAmount) <= Math.abs(highShares * price - targetAmount)) {
+        return lowShares;
+    }
+    return highShares;
+}
+
+function getClosestSharesFromCount(targetCount) {
+    let rounded = Math.round(targetCount / 100) * 100;
+    if (rounded < 100) return 0;
+    return rounded;
+}
+
+function getSelectedBanks() {
+    let checks = document.querySelectorAll('#bankGrid input[type="checkbox"]:checked');
+    return Array.from(checks).map(c => c.value);
+}
+
+function getRebalancePeriod() {
+    return document.querySelector('input[name="cfg_rebalance"]:checked').value;
+}
+
+function isPeriodEnd(dateStr, nextDateStr, period) {
+    if (!nextDateStr) return true;
+    let parts = dateStr.split('-');
+    let nextParts = nextDateStr.split('-');
+    let y = parseInt(parts[0]), m = parseInt(parts[1]);
+    let ny = parseInt(nextParts[0]), nm = parseInt(nextParts[1]);
+    if (period === 'month') {
+        return m !== nm || y !== ny;
+    } else if (period === 'quarter') {
+        let q = Math.floor((m - 1) / 3);
+        let nq = Math.floor((nm - 1) / 3);
+        return q !== nq || y !== ny;
+    } else {
+        return y !== ny;
+    }
+}
+
+function updateCapitalPreview() {
+    let banks = getSelectedBanks();
+    let capital = parseFloat(document.getElementById('cfg_capital').value) || 30000;
+    let preview = document.getElementById('capitalPreview');
+    if (banks.length === 0) {
+        preview.innerHTML = '请至少选择一只银行';
+        return;
+    }
+    let perStock = capital / banks.length;
+    let lines = [`总资金 <span class="highlight">¥${capital.toLocaleString()}</span> → 每只 <span class="highlight">¥${perStock.toFixed(0)}</span>`];
+    for (let s of banks) {
+        let data = allBankData[s];
+        if (!data || data.length === 0) {
+            lines.push(`${BANK_NAMES[s]}(${s}): 数据未加载`);
+            continue;
+        }
+        let firstDate = document.getElementById('cfg_start').value;
+        let row = data.find(r => {
+            let rd = r.Date;
+            if (typeof rd === 'number') rd = String(rd);
+            if (typeof rd === 'string' && rd.length > 10) rd = rd.substring(0, 10);
+            return rd >= firstDate;
+        });
+        if (!row) row = data[0];
+        let price = row.Close;
+        let shares = getClosestShares(perStock, price);
+        let actualCost = shares * price;
+        lines.push(`${BANK_NAMES[s]}: ${shares}股 × ¥${price.toFixed(2)} = <span class="highlight">¥${actualCost.toFixed(0)}</span>`);
+    }
+    preview.innerHTML = lines.join('<br>');
+}
+
+function updateBankTooltips() {
+    let startDate = document.getElementById('cfg_start').value;
+    let endDate = document.getElementById('cfg_end').value;
+    
+    document.querySelectorAll('.bank-check .tooltip').forEach(tooltip => {
+        let bank = tooltip.dataset.bank;
+        let data = allBankData[bank];
+        if (!data || data.length === 0) {
+            tooltip.innerHTML = '数据未加载';
+            return;
+        }
+        
+        let startRow = data.find(r => {
+            let rd = r.Date;
+            if (typeof rd === 'number') rd = String(rd);
+            if (typeof rd === 'string' && rd.length > 10) rd = rd.substring(0, 10);
+            return rd >= startDate;
+        });
+        let endRow = null;
+        for (let i = data.length - 1; i >= 0; i--) {
+            let r = data[i];
+            let rd = r.Date;
+            if (typeof rd === 'number') rd = String(rd);
+            if (typeof rd === 'string' && rd.length > 10) rd = rd.substring(0, 10);
+            if (rd <= endDate) {
+                endRow = r;
+                break;
+            }
+        }
+        
+        if (!startRow || !endRow) {
+            tooltip.innerHTML = '日期范围内无数据';
+            return;
+        }
+        
+        let startPrice = startRow.Close;
+        let endPrice = endRow.Close;
+        let changePct = ((endPrice / startPrice - 1) * 100).toFixed(2);
+        let color = changePct >= 0 ? 'var(--success)' : 'var(--danger)';
+        let sign = changePct >= 0 ? '+' : '';
+        
+        tooltip.innerHTML = `起始: ¥${startPrice.toFixed(2)}<br>最终: ¥${endPrice.toFixed(2)}<br>变动: <span style="color:${color}">${sign}${changePct}%</span>`;
+    });
+}
+
+async function loadBankData(symbol) {
+    if (allBankData[symbol] && allBankData[symbol].length > 0) return allBankData[symbol];
+    try {
+        let response = await fetch(`../data/ashare/${symbol}.csv?v=${Date.now()}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        let csvText = await response.text();
+        return new Promise((resolve, reject) => {
+            Papa.parse(csvText, {
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    allBankData[symbol] = results.data;
+                    resolve(results.data);
+                },
+                error: reject
+            });
+        });
+    } catch (e) {
+        console.error(`Failed to load ${symbol}:`, e);
+        return [];
+    }
+}
+
+async function runBacktest() {
+    let btn = document.getElementById('btnRun');
+    let overlay = document.getElementById('loadingOverlay');
+    let loadingText = document.getElementById('loadingText');
+    btn.disabled = true;
+    overlay.classList.add('show');
+
+    try {
+        let banks = getSelectedBanks();
+        if (banks.length === 0) { alert('请至少选择一只银行'); return; }
+
+        loadingText.textContent = '正在加载数据...';
+        for (let s of banks) {
+            await loadBankData(s);
+        }
+
+        loadingText.textContent = '正在执行回测计算...';
+        await new Promise(r => setTimeout(r, 50));
+
+        let config = {
+            banks: banks,
+            start: document.getElementById('cfg_start').value,
+            end: document.getElementById('cfg_end').value,
+            capital: parseFloat(document.getElementById('cfg_capital').value) || 30000,
+            gridPct: (parseFloat(document.getElementById('cfg_grid_pct').value) || 5) / 100,
+            tradeRatio: (parseFloat(document.getElementById('cfg_trade_ratio').value) || 20) / 100,
+            rebalancePeriod: getRebalancePeriod()
+        };
+
+        let result = executeBacktest(config);
+        lastBacktestResult = result;
+        renderResults(result, config);
+
+    } catch (e) {
+        console.error(e);
+        alert('回测执行出错: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        overlay.classList.remove('show');
+    }
+}
+
+function executeBacktest(config) {
+    let { banks, start, end, capital, gridPct, tradeRatio, rebalancePeriod } = config;
+
+    let merged = {};
+    let allDates = new Set();
+
+    for (let s of banks) {
+        let data = allBankData[s];
+        if (!data || data.length === 0) continue;
+        merged[s] = {};
+        for (let row of data) {
+            let d = row.Date;
+            if (typeof d === 'number') {
+                d = String(d);
+                if (d.length === 8) d = d.substring(0, 4) + '-' + d.substring(4, 6) + '-' + d.substring(6, 8);
+            }
+            if (typeof d === 'string') {
+                if (d.length > 10) d = d.substring(0, 10);
+            }
+            if (d >= start && d <= end) {
+                merged[s][d] = row;
+                allDates.add(d);
+            }
+        }
+    }
+
+    let dates = Array.from(allDates).sort();
+    if (dates.length === 0) return { error: '选定日期范围内无数据' };
+
+    let lastRow = {};
+    for (let s of banks) {
+        if (merged[s] && merged[s][dates[0]]) {
+            lastRow[s] = { ...merged[s][dates[0]] };
+        }
+    }
+
+    for (let i = 0; i < dates.length; i++) {
+        let date = dates[i];
+        for (let s of banks) {
+            if (merged[s][date]) {
+                lastRow[s] = { ...merged[s][date] };
+            } else if (lastRow[s]) {
+                merged[s][date] = { ...lastRow[s] };
+            }
+        }
+    }
+
+    let validEnd = end;
+    for (let s of banks) {
+        let sDates = Object.keys(merged[s]).sort();
+        let sLast = sDates.length > 0 ? sDates[sDates.length - 1] : null;
+        if (sLast && sLast < validEnd) validEnd = sLast;
+    }
+    dates = dates.filter(d => d <= validEnd);
+    if (dates.length === 0) return { error: '选定日期范围内无数据' };
+
+    let N = banks.length;
+    let cash = capital;
+    let portfolio = {};
+    let baseP = {};
+    let totalFees = 0;
+    let totalDividend = 0;
+    let totalTrades = 0;
+    let totalRebalances = 0;
+    let tradeLog = [];
+    let equityCurve = [];
+    let allocationHistory = [];
+    let rebalanceDates = [];
+
+    let perStock = capital / N;
+    let firstDate = dates[0];
+    let initDetails = {};
+
+    for (let s of banks) {
+        let row = merged[s][firstDate];
+        if (!row || !row.Close) continue;
+        let price = row.Close;
+        let shares = getClosestShares(perStock, price);
+        let cost = shares * price;
+        let fees = calcFees(cost, false);
+
+        if (cash >= cost + fees) {
+            portfolio[s] = shares;
+            cash -= (cost + fees);
+            baseP[s] = price;
+            totalFees += fees;
+            totalTrades++;
+            tradeLog.push({ date: firstDate, stock: s, type: 'init_buy', price, shares, amount: cost, fees });
+            initDetails[s] = { shares, price, cost: cost + fees };
+        } else {
+            portfolio[s] = 0;
+            baseP[s] = price;
+            initDetails[s] = { shares: 0, price, cost: 0 };
+        }
+    }
+
+    for (let i = 0; i < dates.length; i++) {
+        let date = dates[i];
+        let nextDate = i + 1 < dates.length ? dates[i + 1] : null;
+
+        for (let s of banks) {
+            let row = merged[s][date];
+            if (!row) continue;
+
+            let divCash = parseFloat(row.DivCash);
+            if (!isNaN(divCash) && divCash > 0 && portfolio[s] > 0) {
+                let income = portfolio[s] * divCash;
+                cash += income;
+                baseP[s] -= divCash;
+                totalDividend += income;
+                tradeLog.push({ date, stock: s, type: 'dividend', price: divCash, shares: portfolio[s], amount: income, fees: 0 });
+            }
+        }
+
+        for (let s of banks) {
+            let row = merged[s][date];
+            if (!row || !portfolio[s] || portfolio[s] <= 0) continue;
+
+            let low = row.Low, high = row.High, open = row.Open;
+            if (low == null || high == null || open == null) continue;
+
+            let loopCount = 0;
+            while (low <= baseP[s] * (1 - gridPct) && loopCount < 5) {
+                loopCount++;
+                let triggerPrice = baseP[s] * (1 - gridPct);
+                let execPrice = Math.min(open, triggerPrice);
+                let buyShares = getClosestSharesFromCount(portfolio[s] * tradeRatio);
+                if (buyShares <= 0) break;
+
+                let cost = buyShares * execPrice;
+                let fees = calcFees(cost, false);
+
+                if (cash >= cost + fees) {
+                    portfolio[s] += buyShares;
+                    cash -= (cost + fees);
+                    baseP[s] = execPrice;
+                    totalFees += fees;
+                    totalTrades++;
+                    tradeLog.push({ date, stock: s, type: 'grid_buy', price: execPrice, shares: buyShares, amount: cost, fees });
+                } else {
+                    break;
+                }
+            }
+
+            loopCount = 0;
+            while (high >= baseP[s] * (1 + gridPct) && loopCount < 5) {
+                loopCount++;
+                let triggerPrice = baseP[s] * (1 + gridPct);
+                let execPrice = Math.max(open, triggerPrice);
+                let sellShares = getClosestSharesFromCount(portfolio[s] * tradeRatio);
+                if (sellShares <= 0) break;
+                if (portfolio[s] < sellShares) break;
+
+                let proceeds = sellShares * execPrice;
+                let fees = calcFees(proceeds, true);
+
+                portfolio[s] -= sellShares;
+                cash += (proceeds - fees);
+                baseP[s] = execPrice;
+                totalFees += fees;
+                totalTrades++;
+                tradeLog.push({ date, stock: s, type: 'grid_sell', price: execPrice, shares: sellShares, amount: proceeds, fees });
+            }
+        }
+
+        if (isPeriodEnd(date, nextDate, rebalancePeriod)) {
+            let totalValue = cash;
+            let stockPrices = {};
+            for (let s of banks) {
+                let row = merged[s][date];
+                let p = row ? row.Close : 0;
+                stockPrices[s] = p;
+                totalValue += (portfolio[s] || 0) * p;
+            }
+
+            let targetPerStock = totalValue / N;
+            let rebalanceActions = [];
+
+            for (let s of banks) {
+                let price = stockPrices[s];
+                if (!price || price <= 0) continue;
+                let targetShares = getClosestShares(targetPerStock, price);
+                let diff = targetShares - (portfolio[s] || 0);
+
+                if (diff > 0) {
+                    let cost = diff * price;
+                    let fees = calcFees(cost, false);
+                    if (cash >= cost + fees) {
+                        portfolio[s] = (portfolio[s] || 0) + diff;
+                        cash -= (cost + fees);
+                        totalFees += fees;
+                        totalTrades++;
+                        rebalanceActions.push({ stock: s, type: 'rebalance_buy', shares: diff, price, fees });
+                    }
+                } else if (diff < 0) {
+                    let absDiff = Math.abs(diff);
+                    let proceeds = absDiff * price;
+                    let fees = calcFees(proceeds, true);
+                    portfolio[s] = (portfolio[s] || 0) - absDiff;
+                    cash += (proceeds - fees);
+                    totalFees += fees;
+                    totalTrades++;
+                    rebalanceActions.push({ stock: s, type: 'rebalance_sell', shares: absDiff, price, fees });
+                }
+
+                baseP[s] = price;
+            }
+
+            if (rebalanceActions.length > 0) {
+                totalRebalances++;
+                rebalanceDates.push(date);
+                for (let a of rebalanceActions) {
+                    tradeLog.push({
+                        date, stock: a.stock, type: a.type,
+                        price: a.price, shares: a.shares,
+                        amount: a.shares * a.price, fees: a.fees
+                    });
+                }
+            }
+        }
+
+        let dayValue = cash;
+        let dayAlloc = {};
+        for (let s of banks) {
+            let row = merged[s][date];
+            let p = row ? row.Close : 0;
+            let val = (portfolio[s] || 0) * p;
+            dayValue += val;
+            dayAlloc[s] = val;
+        }
+        equityCurve.push({ date, value: dayValue, cash });
+        allocationHistory.push({ date, ...dayAlloc });
+    }
+
+    let finalValue = equityCurve.length > 0 ? equityCurve[equityCurve.length - 1].value : capital;
+    let totalReturn = (finalValue / capital - 1) * 100;
+
+    let tradingDays = equityCurve.length;
+    let years = tradingDays / 252;
+    let annualReturn = years > 0 ? (Math.pow(finalValue / capital, 1 / years) - 1) * 100 : 0;
+
+    let maxDrawdown = 0;
+    let peak = 0;
+    for (let pt of equityCurve) {
+        if (pt.value > peak) peak = pt.value;
+        let dd = (pt.value - peak) / peak;
+        if (dd < maxDrawdown) maxDrawdown = dd;
+    }
+
+    let bhCurve = [];
+    let bhInitPerStock = capital / N;
+    let bhShares = {};
+    let bhInitCost = 0;
+    for (let s of banks) {
+        let firstRow = merged[s][dates[0]];
+        if (!firstRow || !firstRow.Close) { bhShares[s] = 0; continue; }
+        let sh = getClosestShares(bhInitPerStock, firstRow.Close);
+        bhShares[s] = sh;
+        bhInitCost += sh * firstRow.Close + calcFees(sh * firstRow.Close, false);
+    }
+    let bhRemainingCash = Math.max(0, capital - bhInitCost);
+    let bhDivTotal = 0;
+    for (let i = 0; i < dates.length; i++) {
+        let date = dates[i];
+        let bhValue = bhRemainingCash + bhDivTotal;
+        for (let s of banks) {
+            let row = merged[s][date];
+            if (!row) continue;
+            bhValue += (bhShares[s] || 0) * row.Close;
+            let dc = parseFloat(row.DivCash);
+            if (!isNaN(dc) && dc > 0) bhDivTotal += (bhShares[s] || 0) * dc;
+        }
+        bhCurve.push({ date, value: bhValue });
+    }
+
+    let bhFinalValue = bhCurve.length > 0 ? bhCurve[bhCurve.length - 1].value : capital;
+    let bhTotalReturn = (bhFinalValue / capital - 1) * 100;
+    let bhYears = years;
+    let bhAnnualReturn = bhYears > 0 ? (Math.pow(bhFinalValue / capital, 1 / bhYears) - 1) * 100 : 0;
+
+    let bhMaxDrawdown = 0;
+    let bhPeak = 0;
+    for (let pt of bhCurve) {
+        if (pt.value > bhPeak) bhPeak = pt.value;
+        let dd = (pt.value - bhPeak) / bhPeak;
+        if (dd < bhMaxDrawdown) bhMaxDrawdown = dd;
+    }
+
+    let excessReturn = totalReturn - bhTotalReturn;
+    let excessAnnual = annualReturn - bhAnnualReturn;
+
+    return {
+        equityCurve, allocationHistory, tradeLog, rebalanceDates, bhCurve,
+        totalReturn, annualReturn, maxDrawdown, finalValue,
+        totalFees, totalDividend, totalTrades, totalRebalances,
+        initDetails, capital, dates,
+        bhTotalReturn, bhAnnualReturn, bhMaxDrawdown, bhFinalValue,
+        excessReturn, excessAnnual
+    };
+}
+
+function renderResults(result, config) {
+    if (result.error) { alert(result.error); return; }
+
+    let rEl = document.getElementById('m_return');
+    rEl.innerText = result.totalReturn.toFixed(2) + '%';
+    rEl.className = 'card-value ' + (result.totalReturn >= 0 ? 'positive' : 'negative');
+
+    let exRetEl = document.getElementById('m_return_sub');
+    let exRetSign = result.excessReturn >= 0 ? '+' : '';
+    exRetEl.innerHTML = `超额 <span style="color:${result.excessReturn >= 0 ? 'var(--success)' : 'var(--danger)'}">${exRetSign}${result.excessReturn.toFixed(2)}%</span> vs 持有 ${result.bhTotalReturn.toFixed(2)}%`;
+
+    let aEl = document.getElementById('m_annual');
+    aEl.innerText = result.annualReturn.toFixed(2) + '%';
+    aEl.className = 'card-value ' + (result.annualReturn >= 0 ? 'positive' : 'negative');
+
+    let exAnnEl = document.getElementById('m_annual_sub');
+    let exAnnSign = result.excessAnnual >= 0 ? '+' : '';
+    exAnnEl.innerHTML = `超额 <span style="color:${result.excessAnnual >= 0 ? 'var(--success)' : 'var(--danger)'}">${exAnnSign}${result.excessAnnual.toFixed(2)}%</span> vs 持有 ${result.bhAnnualReturn.toFixed(2)}%`;
+
+    let ddEl = document.getElementById('m_drawdown');
+    ddEl.innerText = (result.maxDrawdown * 100).toFixed(2) + '%';
+    ddEl.className = 'card-value negative';
+
+    let ddSubEl = document.getElementById('m_drawdown_sub');
+    ddSubEl.innerHTML = `持有回撤 <span style="color:var(--danger)">${(result.bhMaxDrawdown * 100).toFixed(2)}%</span>`;
+
+    document.getElementById('m_final').innerText = '¥' + result.finalValue.toFixed(0);
+    let finalSubEl = document.getElementById('m_final_sub');
+    finalSubEl.innerHTML = `持有 ¥${result.bhFinalValue.toFixed(0)}`;
+
+    document.getElementById('m_fees').innerText = '¥' + result.totalFees.toFixed(0);
+    document.getElementById('m_dividend').innerText = '+¥' + result.totalDividend.toFixed(0);
+    document.getElementById('m_trades').innerText = result.totalTrades;
+    document.getElementById('m_rebalances').innerText = result.totalRebalances;
+
+    renderEquityChart(result, config);
+    renderAllocationChart(result, config);
+    renderTradeLog(result);
+}
+
+function renderEquityChart(result, config) {
+    if (!chartEquity) {
+        chartEquity = echarts.init(document.getElementById('chartEquity'), 'dark');
+    }
+
+    let dates = result.equityCurve.map(p => p.date);
+    let values = result.equityCurve.map(p => p.value);
+    let bhValues = result.bhCurve.map(p => p.value);
+    let rebalanceMarks = result.rebalanceDates;
+
+    let markLineData = rebalanceMarks.map(d => ({
+        xAxis: d,
+        label: { show: false },
+        lineStyle: { color: 'rgba(245, 158, 11, 0.3)', type: 'dashed', width: 1 }
+    }));
+
+    let option = {
+        backgroundColor: 'transparent',
+        title: {
+            text: '策略净值曲线 vs 买入持有',
+            left: 'left',
+            textStyle: { color: '#e2e8f0', fontSize: 15 }
+        },
+        tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(30, 41, 59, 0.95)',
+            borderColor: '#475569',
+            textStyle: { color: '#e2e8f0' },
+            formatter: function(params) {
+                let s = `<b>${params[0].axisValue}</b><br/>`;
+                for (let p of params) {
+                    s += `${p.marker} ${p.seriesName}: ¥${p.value.toFixed(0)}<br/>`;
+                }
+                return s;
+            }
+        },
+        legend: {
+            data: ['网格再平准策略', '买入持有基准'],
+            top: 5, right: 20,
+            textStyle: { color: '#94a3b8' }
+        },
+        grid: { left: '3%', right: '4%', bottom: '12%', top: '15%', containLabel: true },
+        dataZoom: [
+            { type: 'inside', start: 0, end: 100 },
+            { type: 'slider', start: 0, end: 100, height: 20, bottom: 5 }
+        ],
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: dates,
+            axisLine: { lineStyle: { color: '#475569' } },
+            axisLabel: { color: '#94a3b8' }
+        },
+        yAxis: {
+            type: 'value',
+            min: 'dataMin',
+            splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
+            axisLabel: { color: '#94a3b8', formatter: '¥{value}' }
+        },
+        series: [
+            {
+                name: '网格再平准策略',
+                type: 'line',
+                smooth: true,
+                showSymbol: false,
+                data: values,
+                lineStyle: { width: 2.5, color: '#3b82f6' },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(59,130,246,0.3)' },
+                        { offset: 1, color: 'rgba(59,130,246,0.0)' }
+                    ])
+                },
+                markLine: {
+                    symbol: 'none',
+                    data: markLineData
+                }
+            },
+            {
+                name: '买入持有基准',
+                type: 'line',
+                smooth: true,
+                showSymbol: false,
+                data: bhValues,
+                lineStyle: { width: 1.5, color: '#94a3b8', type: 'dashed' }
+            },
+            {
+                name: '初始本金',
+                type: 'line',
+                markLine: {
+                    symbol: 'none',
+                    data: [{ yAxis: result.capital }],
+                    lineStyle: { color: '#ef4444', type: 'dotted', width: 1.5 },
+                    label: { position: 'end', formatter: '本金 ¥' + result.capital, color: '#ef4444', fontSize: 11 }
+                }
+            }
+        ]
+    };
+
+    chartEquity.setOption(option, true);
+}
+
+function renderAllocationChart(result, config) {
+    if (!chartAllocation) {
+        chartAllocation = echarts.init(document.getElementById('chartAllocation'), 'dark');
+    }
+
+    let dates = result.allocationHistory.map(p => p.date);
+    let series = [];
+
+    for (let s of config.banks) {
+        let data = result.allocationHistory.map(p => (p[s] || 0).toFixed(0));
+        series.push({
+            name: BANK_NAMES[s],
+            type: 'line',
+            stack: 'Total',
+            areaStyle: { opacity: 0.6 },
+            emphasis: { focus: 'series' },
+            smooth: false,
+            showSymbol: false,
+            data: data,
+            lineStyle: { width: 0.5 },
+            itemStyle: { color: BANK_COLORS[s] }
+        });
+    }
+
+    let option = {
+        backgroundColor: 'transparent',
+        title: {
+            text: '各银行持仓市值分布',
+            left: 'left',
+            textStyle: { color: '#e2e8f0', fontSize: 15 }
+        },
+        tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(30, 41, 59, 0.95)',
+            borderColor: '#475569',
+            textStyle: { color: '#e2e8f0' },
+            formatter: function(params) {
+                let s = `<b>${params[0].axisValue}</b><br/>`;
+                let total = 0;
+                for (let p of params) {
+                    total += parseFloat(p.value);
+                    s += `${p.marker} ${p.seriesName}: ¥${Number(p.value).toLocaleString()}<br/>`;
+                }
+                s += `<b>合计: ¥${total.toLocaleString()}</b>`;
+                return s;
+            }
+        },
+        legend: {
+            data: config.banks.map(s => BANK_NAMES[s]),
+            top: 5, right: 20,
+            textStyle: { color: '#94a3b8', fontSize: 11 }
+        },
+        grid: { left: '3%', right: '4%', bottom: '12%', top: '15%', containLabel: true },
+        dataZoom: [
+            { type: 'inside', start: 0, end: 100 },
+            { type: 'slider', start: 0, end: 100, height: 20, bottom: 5 }
+        ],
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: dates,
+            axisLine: { lineStyle: { color: '#475569' } },
+            axisLabel: { color: '#94a3b8' }
+        },
+        yAxis: {
+            type: 'value',
+            splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
+            axisLabel: { color: '#94a3b8', formatter: '¥{value}' }
+        },
+        series: series
+    };
+
+    chartAllocation.setOption(option, true);
+}
+
+function renderTradeLog(result) {
+    let tbody = document.getElementById('tradeLogBody');
+    tbody.innerHTML = '';
+
+    let log = result.tradeLog;
+    let fragment = document.createDocumentFragment();
+
+    for (let t of log) {
+        let tr = document.createElement('tr');
+        let typeLabel = '', typeClass = '';
+        switch (t.type) {
+            case 'init_buy': typeLabel = '初始建仓'; typeClass = 'buy-tag'; break;
+            case 'grid_buy': typeLabel = '网格买入'; typeClass = 'buy-tag'; break;
+            case 'grid_sell': typeLabel = '网格卖出'; typeClass = 'sell-tag'; break;
+            case 'rebalance_buy': typeLabel = '平准买入'; typeClass = 'rebalance-tag'; break;
+            case 'rebalance_sell': typeLabel = '平准卖出'; typeClass = 'rebalance-tag'; break;
+            case 'dividend': typeLabel = '分红到账'; typeClass = 'dividend-tag'; break;
+            default: typeLabel = t.type;
+        }
+
+        tr.innerHTML = `
+            <td>${t.date}</td>
+            <td>${BANK_NAMES[t.stock] || t.stock}</td>
+            <td class="${typeClass}">${typeLabel}</td>
+            <td>¥${t.price.toFixed(3)}</td>
+            <td>${t.shares}</td>
+            <td>¥${t.amount.toFixed(0)}</td>
+            <td>¥${t.fees.toFixed(2)}</td>
+        `;
+        fragment.appendChild(tr);
+    }
+
+    tbody.appendChild(fragment);
+}
+
+function toggleTradeLog() {
+    let table = document.getElementById('tradeLogTable');
+    let toggle = document.getElementById('logToggle');
+    if (table.classList.contains('show')) {
+        table.classList.remove('show');
+        toggle.textContent = '▶ 展开';
+    } else {
+        table.classList.add('show');
+        toggle.textContent = '▼ 收起';
+    }
+}
+
+document.querySelectorAll('#bankGrid input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', function() {
+        this.closest('.bank-check').classList.toggle('checked', this.checked);
+        updateCapitalPreview();
+    });
+});
+
+document.getElementById('cfg_capital').addEventListener('input', updateCapitalPreview);
+document.getElementById('cfg_start').addEventListener('change', function() {
+    updateCapitalPreview();
+    updateBankTooltips();
+});
+document.getElementById('cfg_end').addEventListener('change', function() {
+    updateBankTooltips();
+});
+
+window.addEventListener('resize', () => {
+    if (chartEquity) chartEquity.resize();
+    if (chartAllocation) chartAllocation.resize();
+});
+
+window.addEventListener('DOMContentLoaded', async () => {
+    let banks = getSelectedBanks();
+    for (let s of banks) {
+        await loadBankData(s);
+    }
+    updateCapitalPreview();
+
+    let minDate = null, maxDate = null;
+    for (let s of banks) {
+        let data = allBankData[s];
+        if (data && data.length > 0) {
+            let first = data[0].Date;
+            let last = data[data.length - 1].Date;
+            [first, last].forEach((d, i) => {
+                if (typeof d === 'number') d = String(d);
+                if (typeof d === 'string' && d.length > 10) d = d.substring(0, 10);
+                if (i === 0) first = d; else last = d;
+            });
+            if (!minDate || first < minDate) minDate = first;
+            if (!maxDate || last > maxDate) maxDate = last;
+        }
+    }
+    if (minDate) document.getElementById('cfg_start').min = minDate;
+    if (maxDate) {
+        let validMax = maxDate;
+        for (let s of banks) {
+            let data = allBankData[s];
+            if (!data || data.length === 0) continue;
+            let last = data[data.length - 1].Date;
+            if (typeof last === 'number') last = String(last);
+            if (typeof last === 'string' && last.length > 10) last = last.substring(0, 10);
+            if (last < validMax) validMax = last;
+        }
+        document.getElementById('cfg_end').value = validMax;
+        document.getElementById('cfg_end').max = validMax;
+    }
+
+    updateBankTooltips();
+    runBacktest();
+});
+</script>
+
+</body>
+</html>
