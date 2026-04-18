@@ -521,7 +521,8 @@ function updateCapitalPreview() {
         return;
     }
     let perStock = capital / banks.length;
-    let lines = [`总资金 <span class="highlight">¥${capital.toLocaleString()}</span> → 每只 <span class="highlight">¥${perStock.toFixed(0)}</span>`];
+    let lines = [];
+    let totalActualCost = 0;
     for (let s of banks) {
         let data = allBankData[s];
         if (!data || data.length === 0) {
@@ -538,9 +539,12 @@ function updateCapitalPreview() {
         if (!row) row = data[0];
         let price = row.Close;
         let shares = getClosestShares(perStock, price);
-        let actualCost = shares * price;
+        let actualCost = shares * price + calcFees(shares * price, false);
+        totalActualCost += actualCost;
         lines.push(`${BANK_NAMES[s]}: ${shares}股 × ¥${price.toFixed(2)} = <span class="highlight">¥${actualCost.toFixed(0)}</span>`);
     }
+    let adjustedCapital = Math.max(capital, totalActualCost);
+    lines.unshift(`总资金 <span class="highlight">¥${adjustedCapital.toLocaleString()}</span>${adjustedCapital > capital ? ' <span style="color:#e6a23c">(已调整+¥' + (adjustedCapital - capital).toFixed(0) + ')</span>' : ''} → 每只 <span class="highlight">¥${perStock.toFixed(0)}</span>`);
     preview.innerHTML = lines.join('<br>');
 }
 
@@ -731,29 +735,45 @@ function executeBacktest(config) {
     let firstDate = dates[0];
     let initDetails = {};
 
+    let initPlan = [];
+    let initTotalCost = 0;
     for (let s of banks) {
         lots[s] = [];
         let row = merged[s][firstDate];
-        if (!row || !row.Close) continue;
+        if (!row || !row.Close) {
+            initPlan.push({ stock: s, shares: 0, price: 0, cost: 0, fees: 0 });
+            continue;
+        }
         let price = row.Close;
         let shares = getClosestShares(perStock, price);
         let cost = shares * price;
         let fees = calcFees(cost, false);
+        initPlan.push({ stock: s, shares, price, cost, fees });
+        initTotalCost += cost + fees;
+    }
 
-        if (cash >= cost + fees) {
-            portfolio[s] = shares;
-            cash -= (cost + fees);
-            baseP[s] = price;
-            totalFees += fees;
-            totalTrades++;
-            lots[s].push({ date: firstDate, shares: shares, divReceived: 0 });
-            tradeLog.push({ date: firstDate, stock: s, type: 'init_buy', price, shares, amount: cost, fees, divTax: 0 });
-            initDetails[s] = { shares, price, cost: cost + fees };
-        } else {
+    if (initTotalCost > capital) {
+        capital = initTotalCost;
+        cash = capital;
+    }
+
+    for (let plan of initPlan) {
+        let s = plan.stock;
+        if (plan.shares <= 0) {
+            let row = merged[s][firstDate];
             portfolio[s] = 0;
-            baseP[s] = price;
-            initDetails[s] = { shares: 0, price, cost: 0 };
+            baseP[s] = row && row.Close ? row.Close : 0;
+            initDetails[s] = { shares: 0, price: baseP[s], cost: 0 };
+            continue;
         }
+        portfolio[s] = plan.shares;
+        cash -= (plan.cost + plan.fees);
+        baseP[s] = plan.price;
+        totalFees += plan.fees;
+        totalTrades++;
+        lots[s].push({ date: firstDate, shares: plan.shares, divReceived: 0 });
+        tradeLog.push({ date: firstDate, stock: s, type: 'init_buy', price: plan.price, shares: plan.shares, amount: plan.cost, fees: plan.fees, divTax: 0 });
+        initDetails[s] = { shares: plan.shares, price: plan.price, cost: plan.cost + plan.fees };
     }
 
     function calcDivTaxForSell(stock, sellShares, sellDate) {
@@ -977,8 +997,9 @@ function executeBacktest(config) {
         if (dd < maxDrawdown) maxDrawdown = dd;
     }
 
+    let bhCapital = capital;
     let bhCurve = [];
-    let bhInitPerStock = capital / N;
+    let bhInitPerStock = bhCapital / N;
     let bhShares = {};
     let bhLots = {};
     let bhInitCost = 0;
@@ -990,7 +1011,10 @@ function executeBacktest(config) {
         bhLots[s] = [{ date: dates[0], shares: sh, divReceived: 0 }];
         bhInitCost += sh * firstRow.Close + calcFees(sh * firstRow.Close, false);
     }
-    let bhRemainingCash = Math.max(0, capital - bhInitCost);
+    if (bhInitCost > bhCapital) {
+        bhCapital = bhInitCost;
+    }
+    let bhRemainingCash = Math.max(0, bhCapital - bhInitCost);
     let bhDivTotal = 0;
     let bhDivTaxTotal = 0;
     for (let i = 0; i < dates.length; i++) {
@@ -1011,10 +1035,10 @@ function executeBacktest(config) {
         bhCurve.push({ date, value: bhValue });
     }
 
-    let bhFinalValue = bhCurve.length > 0 ? bhCurve[bhCurve.length - 1].value : capital;
-    let bhTotalReturn = (bhFinalValue / capital - 1) * 100;
+    let bhFinalValue = bhCurve.length > 0 ? bhCurve[bhCurve.length - 1].value : bhCapital;
+    let bhTotalReturn = (bhFinalValue / bhCapital - 1) * 100;
     let bhYears = years;
-    let bhAnnualReturn = bhYears > 0 ? (Math.pow(bhFinalValue / capital, 1 / bhYears) - 1) * 100 : 0;
+    let bhAnnualReturn = bhYears > 0 ? (Math.pow(bhFinalValue / bhCapital, 1 / bhYears) - 1) * 100 : 0;
 
     let bhMaxDrawdown = 0;
     let bhPeak = 0;
