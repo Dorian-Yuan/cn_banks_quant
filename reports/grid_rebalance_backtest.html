@@ -127,15 +127,16 @@
         .main-content::-webkit-scrollbar { width: 8px; }
         .main-content::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
 
-        .metrics-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+        .metrics-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
         .card {
             background: var(--card-bg); border: 1px solid var(--border-color);
             border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             display: flex; justify-content: space-between; align-items: flex-end;
+            min-height: 90px;
         }
         .card-left { flex: 1; min-width: 0; }
-        .card-right { text-align: right; margin-left: 12px; flex-shrink: 0; }
-        .card-title { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500; }
+        .card-right { text-align: right; margin-left: 12px; flex-shrink: 0; width: 100px; }
+        .card-title { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500; min-height: 18px; }
         .card-value { font-size: 26px; font-weight: 700; }
         .positive { color: var(--success); }
         .negative { color: var(--danger); }
@@ -273,6 +274,26 @@
             </div>
         </div>
 
+        <div class="control-group">
+            <h3>💸 佣金设置</h3>
+            <div class="row">
+                <div class="field">
+                    <label>佣金费率 (万分之一)</label>
+                    <input type="number" id="cfg_commission_rate" value="0.854" min="0" step="0.001">
+                </div>
+                <div class="field">
+                    <label>最低佣金 (元)</label>
+                    <input type="number" id="cfg_commission_min" value="0.5" min="0" step="0.1">
+                </div>
+            </div>
+            <div class="field" style="margin-bottom:0;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="cfg_commission_exempt5" checked style="width:16px;height:16px;accent-color:var(--primary);">
+                    <span>免5（佣金不足5元按5元收取）</span>
+                </label>
+            </div>
+        </div>
+
         <button class="btn-run" id="btnRun" onclick="runBacktest()">▶ 执行回测</button>
         <div style="padding: 0 20px 20px; font-size: 11px; color: var(--text-muted); line-height: 1.7;">
             <b style="color:#cbd5e1;">策略规则：</b><br/>
@@ -281,7 +302,7 @@
             ③ 成交后P更新为成交价<br/>
             ④ 除息日P下调等额分红<br/>
             ⑤ 周期末等权归齐，P重置为收盘价<br/>
-            <span style="color:#64748b;">手续费：万0.854(0.5起免5) + 卖出印花税千0.5</span><br/>
+            <span style="color:#64748b;">佣金/印花税：见左侧设置</span><br/>
             <span style="color:#64748b;">红利税：卖出时按先进先出补扣（≤1月20% / ≤1年10% / >1年免）</span>
         </div>
     </div>
@@ -335,6 +356,7 @@
                     <div class="card-title">累计手续费</div>
                     <div class="card-value negative" id="m_fees" style="font-size:20px;">--</div>
                 </div>
+                <div class="card-right"></div>
             </div>
             <div class="card">
                 <div class="card-left">
@@ -342,18 +364,21 @@
                     <div class="card-value positive" id="m_dividend" style="font-size:20px;">--</div>
                     <div class="card-sub" id="m_div_tax_sub"></div>
                 </div>
+                <div class="card-right"></div>
             </div>
             <div class="card">
                 <div class="card-left">
                     <div class="card-title">网格交易次数</div>
                     <div class="card-value" id="m_trades" style="font-size:20px;">--</div>
                 </div>
+                <div class="card-right"></div>
             </div>
             <div class="card">
                 <div class="card-left">
                     <div class="card-title">再平准次数</div>
                     <div class="card-value" id="m_rebalances" style="font-size:20px;">--</div>
                 </div>
+                <div class="card-right"></div>
             </div>
         </div>
 
@@ -401,8 +426,6 @@ const BANK_COLORS = {
     "601939": "#3b82f6", "601328": "#a855f7", "601658": "#06b6d4"
 };
 
-const COMMISSION_RATE = 0.0000854;
-const MIN_COMMISSION = 0.5;
 const STAMP_DUTY_RATE = 0.0005;
 
 let chartEquity = null;
@@ -410,8 +433,26 @@ let chartAllocation = null;
 let allBankData = {};
 let lastBacktestResult = null;
 
+function getCommissionRate() {
+    return (parseFloat(document.getElementById('cfg_commission_rate').value) || 0.854) / 10000;
+}
+function getMinCommission() {
+    return parseFloat(document.getElementById('cfg_commission_min').value) || 0.5;
+}
+function isCommissionExempt5() {
+    return document.getElementById('cfg_commission_exempt5').checked;
+}
+
 function calcFees(amount, isSell) {
-    let comm = Math.max(MIN_COMMISSION, amount * COMMISSION_RATE);
+    let rate = getCommissionRate();
+    let minComm = getMinCommission();
+    let rawComm = amount * rate;
+    let comm;
+    if (isCommissionExempt5()) {
+        comm = Math.max(minComm, rawComm);
+    } else {
+        comm = Math.max(5, rawComm);
+    }
     let stamp = isSell ? amount * STAMP_DUTY_RATE : 0;
     return comm + stamp;
 }
@@ -1081,7 +1122,7 @@ function renderEquityChart(result, config) {
             top: 25, right: 20,
             textStyle: { color: '#94a3b8' }
         },
-        grid: { left: 80, right: 90, bottom: 60, top: 50, containLabel: false },
+        grid: { left: 80, right: 80, bottom: 60, top: 60, containLabel: false },
         dataZoom: [
             { type: 'inside', start: 0, end: 100 },
             { type: 'slider', start: 0, end: 100, height: 20, bottom: 5 }
@@ -1095,9 +1136,8 @@ function renderEquityChart(result, config) {
         },
         yAxis: {
             type: 'value',
-            min: 'dataMin',
             splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
-            axisLabel: { color: '#94a3b8', formatter: '¥{value}' }
+            axisLabel: { color: '#94a3b8', formatter: function(v) { return v >= 10000 ? '¥' + (v/10000).toFixed(1) + '万' : '¥' + v.toFixed(0); } }
         },
         series: [
             {
@@ -1195,7 +1235,7 @@ function renderAllocationChart(result, config) {
             top: 25, right: 20,
             textStyle: { color: '#94a3b8', fontSize: 11 }
         },
-        grid: { left: 80, right: 30, bottom: 60, top: 60, containLabel: false },
+        grid: { left: 80, right: 80, bottom: 60, top: 60, containLabel: false },
         dataZoom: [
             { type: 'inside', start: 0, end: 100 },
             { type: 'slider', start: 0, end: 100, height: 20, bottom: 5 }
@@ -1210,7 +1250,7 @@ function renderAllocationChart(result, config) {
         yAxis: {
             type: 'value',
             splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
-            axisLabel: { color: '#94a3b8', formatter: '¥{value}' }
+            axisLabel: { color: '#94a3b8', formatter: function(v) { return v >= 10000 ? '¥' + (v/10000).toFixed(1) + '万' : '¥' + v.toFixed(0); } }
         },
         series: series
     };
