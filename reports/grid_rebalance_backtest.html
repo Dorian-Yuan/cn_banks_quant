@@ -828,7 +828,6 @@ function executeBacktest(config) {
             if (!isNaN(divCash) && divCash > 0 && portfolio[s] > 0) {
                 let income = portfolio[s] * divCash;
                 cash += income;
-                baseP[s] -= divCash;
                 totalDividend += income;
                 for (let lot of lots[s]) {
                     lot.divReceived += divCash * lot.shares;
