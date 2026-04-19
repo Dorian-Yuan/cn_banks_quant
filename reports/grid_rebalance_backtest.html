@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>波段再平准策略 V1.0.3 · 多银行网格回测系统</title>
+    <title>波段再平准策略 V1.0.4 · 多银行网格回测系统</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <style>
@@ -204,7 +204,7 @@
 <div class="dashboard">
     <div class="sidebar">
         <div class="header">
-            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.0.3</span></h2>
+            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.0.4</span></h2>
             <p>多银行网格交易 · 交互式回测系统</p>
         </div>
 
@@ -288,8 +288,25 @@
             <div class="field" style="margin-bottom:0;">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                     <input type="checkbox" id="cfg_commission_exempt5" checked style="width:16px;height:16px;accent-color:var(--primary);">
-                    <span>免5（佣金不足5元按5元收取）</span>
+                    <span>免5（佣金不足5元按实际费率收取）</span>
                 </label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>📊 滑点与涨跌停</h3>
+            <div class="row">
+                <div class="field">
+                    <label>滑点 (千分之一)</label>
+                    <input type="number" id="cfg_slippage" value="0" min="0" max="10" step="0.5">
+                </div>
+                <div class="field">
+                    <label>涨跌停限制</label>
+                    <select id="cfg_limit_check">
+                        <option value="0">不检查</option>
+                        <option value="1" selected>检查(主板10%)</option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -379,6 +396,26 @@
                 </div>
                 <div class="card-right"></div>
             </div>
+            <div class="card">
+                <div class="card-left">
+                    <div class="card-title">夏普比率</div>
+                    <div class="card-value" id="m_sharpe" style="font-size:20px;">--</div>
+                </div>
+                <div class="card-right">
+                    <div class="card-bh-title">卡尔玛比率</div>
+                    <div class="card-bh-value" id="m_calmar">--</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-left">
+                    <div class="card-title">网格胜率</div>
+                    <div class="card-value" id="m_grid_win" style="font-size:20px;">--</div>
+                </div>
+                <div class="card-right">
+                    <div class="card-bh-title">买/卖次数</div>
+                    <div class="card-bh-value" id="m_grid_count">--</div>
+                </div>
+            </div>
         </div>
 
         <div class="chart-container">
@@ -389,10 +426,22 @@
             <div id="chartAllocation" class="chart"></div>
         </div>
 
+        <div class="chart-container">
+            <div id="chartCashRatio" class="chart"></div>
+        </div>
+
+        <div class="chart-container">
+            <div id="chartBankPerf" class="chart"></div>
+        </div>
+
         <div class="trade-log-section">
             <div class="trade-log-header" onclick="toggleTradeLog()">
                 <h3>📋 交易日志</h3>
-                <span class="toggle" id="logToggle">▶ 展开</span>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <button onclick="event.stopPropagation(); exportTradeLog()" style="background:var(--primary);color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;">导出CSV</button>
+                    <button onclick="event.stopPropagation(); exportEquityCurve()" style="background:var(--primary);color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;">导出净值</button>
+                    <span class="toggle" id="logToggle">▶ 展开</span>
+                </div>
             </div>
             <div class="trade-log-body">
                 <table class="trade-log-table" id="tradeLogTable">
@@ -416,6 +465,15 @@
 </div>
 
 <script>
+function normalizeDate(d) {
+    if (typeof d === 'number') {
+        d = String(d);
+        if (d.length === 8) return d.substring(0,4) + '-' + d.substring(4,6) + '-' + d.substring(6,8);
+    }
+    if (typeof d === 'string' && d.length > 10) return d.substring(0, 10);
+    return String(d);
+}
+
 const BANK_NAMES = {
     "601398": "工商银行", "601288": "农业银行", "601988": "中国银行",
     "601939": "建设银行", "601328": "交通银行", "601658": "邮储银行"
@@ -531,10 +589,7 @@ function updateCapitalPreview() {
         }
         let firstDate = document.getElementById('cfg_start').value;
         let row = data.find(r => {
-            let rd = r.Date;
-            if (typeof rd === 'number') rd = String(rd);
-            if (typeof rd === 'string' && rd.length > 10) rd = rd.substring(0, 10);
-            return rd >= firstDate;
+            return normalizeDate(r.Date) >= firstDate;
         });
         if (!row) row = data[0];
         let price = row.Close;
@@ -561,18 +616,12 @@ function updateBankTooltips() {
         }
         
         let startRow = data.find(r => {
-            let rd = r.Date;
-            if (typeof rd === 'number') rd = String(rd);
-            if (typeof rd === 'string' && rd.length > 10) rd = rd.substring(0, 10);
-            return rd >= startDate;
+            return normalizeDate(r.Date) >= startDate;
         });
         let endRow = null;
         for (let i = data.length - 1; i >= 0; i--) {
             let r = data[i];
-            let rd = r.Date;
-            if (typeof rd === 'number') rd = String(rd);
-            if (typeof rd === 'string' && rd.length > 10) rd = rd.substring(0, 10);
-            if (rd <= endDate) {
+            if (normalizeDate(r.Date) <= endDate) {
                 endRow = r;
                 break;
             }
@@ -629,9 +678,7 @@ async function runBacktest() {
         if (banks.length === 0) { alert('请至少选择一只银行'); return; }
 
         loadingText.textContent = '正在加载数据...';
-        for (let s of banks) {
-            await loadBankData(s);
-        }
+        await Promise.all(banks.map(s => loadBankData(s)));
 
         loadingText.textContent = '正在执行回测计算...';
         await new Promise(r => setTimeout(r, 50));
@@ -641,10 +688,12 @@ async function runBacktest() {
             start: document.getElementById('cfg_start').value,
             end: document.getElementById('cfg_end').value,
             capital: parseFloat(document.getElementById('cfg_capital').value) || 30000,
-            gridPct: (parseFloat(document.getElementById('cfg_grid_pct').value) || 5) / 100,
+            gridPct: (parseFloat(document.getElementById('cfg_grid_pct').value) || 2) / 100,
             tradeRatio: (parseFloat(document.getElementById('cfg_trade_ratio').value) || 20) / 100,
             rebalancePeriod: getRebalancePeriod(),
-            dividendTax: document.getElementById('cfg_dividend_tax').checked
+            dividendTax: document.getElementById('cfg_dividend_tax').checked,
+            slippage: (parseFloat(document.getElementById('cfg_slippage').value) || 0) / 1000,
+            limitCheck: document.getElementById('cfg_limit_check').value === '1'
         };
 
         let result = executeBacktest(config);
@@ -671,14 +720,7 @@ function executeBacktest(config) {
         if (!data || data.length === 0) continue;
         merged[s] = {};
         for (let row of data) {
-            let d = row.Date;
-            if (typeof d === 'number') {
-                d = String(d);
-                if (d.length === 8) d = d.substring(0, 4) + '-' + d.substring(4, 6) + '-' + d.substring(6, 8);
-            }
-            if (typeof d === 'string') {
-                if (d.length > 10) d = d.substring(0, 10);
-            }
+            let d = normalizeDate(row.Date);
             if (d >= start && d <= end) {
                 merged[s][d] = row;
                 allDates.add(d);
@@ -730,6 +772,11 @@ function executeBacktest(config) {
     let equityCurve = [];
     let allocationHistory = [];
     let rebalanceDates = [];
+    let cashRatioHistory = [];
+    let bankPerf = {};
+    for (let s of banks) {
+        bankPerf[s] = { gridBuyCount: 0, gridSellCount: 0, gridProfit: 0, divIncome: 0, initCost: 0, finalValue: 0 };
+    }
 
     let perStock = capital / N;
     let firstDate = dates[0];
@@ -774,32 +821,12 @@ function executeBacktest(config) {
         lots[s].push({ date: firstDate, shares: plan.shares, divReceived: 0 });
         tradeLog.push({ date: firstDate, stock: s, type: 'init_buy', price: plan.price, shares: plan.shares, amount: plan.cost, fees: plan.fees, divTax: 0 });
         initDetails[s] = { shares: plan.shares, price: plan.price, cost: plan.cost + plan.fees };
+        bankPerf[s].initCost = plan.cost + plan.fees;
     }
 
-    function calcDivTaxForSell(stock, sellShares, sellDate) {
-        if (!dividendTax || sellShares <= 0) return 0;
-        let tax = 0;
-        let remaining = sellShares;
-        let lotCopy = lots[stock].map(l => ({ ...l }));
-
-        for (let i = 0; i < lotCopy.length && remaining > 0; i++) {
-            let lot = lotCopy[i];
-            let consumed = Math.min(remaining, lot.shares);
-            if (consumed <= 0) continue;
-
-            let holdDays = (new Date(sellDate) - new Date(lot.date)) / (1000 * 60 * 60 * 24);
-            let rate = 0;
-            if (holdDays <= 30) {
-                rate = 0.20;
-            } else if (holdDays <= 365) {
-                rate = 0.10;
-            }
-
-            let divPerShare = lot.shares > 0 ? lot.divReceived / lot.shares : 0;
-            tax += divPerShare * consumed * rate;
-            remaining -= consumed;
-        }
-        return tax;
+    function parseLocalDate(str) {
+        let [y, m, d] = String(str).split('-').map(Number);
+        return new Date(y, m - 1, d);
     }
 
     function consumeLots(stock, sellShares, sellDate) {
@@ -812,7 +839,7 @@ function executeBacktest(config) {
             let consumed = Math.min(remaining, lot.shares);
             if (consumed <= 0) { i++; continue; }
 
-            let holdDays = (new Date(sellDate) - new Date(lot.date)) / (1000 * 60 * 60 * 24);
+            let holdDays = (parseLocalDate(sellDate) - parseLocalDate(lot.date)) / (1000 * 60 * 60 * 24);
             let rate = 0;
             if (holdDays <= 30) {
                 rate = 0.20;
@@ -844,11 +871,13 @@ function executeBacktest(config) {
             let row = merged[s][date];
             if (!row) continue;
 
+            // 前复权数据下除息日价格已平滑，baseP无需下调；若切换为不复权数据需恢复 baseP[s] -= divCash
             let divCash = parseFloat(row.DivCash);
             if (!isNaN(divCash) && divCash > 0 && portfolio[s] > 0) {
                 let income = portfolio[s] * divCash;
                 cash += income;
                 totalDividend += income;
+                bankPerf[s].divIncome += income;
                 for (let lot of lots[s]) {
                     lot.divReceived += divCash * lot.shares;
                 }
@@ -860,14 +889,20 @@ function executeBacktest(config) {
             let row = merged[s][date];
             if (!row || !portfolio[s] || portfolio[s] <= 0) continue;
 
-            let low = row.Low, high = row.High, open = row.Open;
+            let low = row.Low, high = row.High, open = row.Open, close = row.Close;
             if (low == null || high == null || open == null) continue;
+
+            let prevClose = i > 0 && merged[s][dates[i-1]] ? merged[s][dates[i-1]].Close : close;
+            let limitUp = config.limitCheck ? prevClose * 1.1 : Infinity;
+            let limitDown = config.limitCheck ? prevClose * 0.9 : 0;
 
             let loopCount = 0;
             while (low <= baseP[s] * (1 - gridPct) && loopCount < 5) {
                 loopCount++;
                 let triggerPrice = baseP[s] * (1 - gridPct);
                 let execPrice = Math.min(open, triggerPrice);
+                if (config.slippage > 0) execPrice = execPrice * (1 + config.slippage);
+                if (execPrice > limitUp || execPrice < limitDown) break;
                 let buyShares = getClosestSharesFromCount(portfolio[s] * tradeRatio);
                 if (buyShares <= 0) break;
 
@@ -880,6 +915,7 @@ function executeBacktest(config) {
                     baseP[s] = execPrice;
                     totalFees += fees;
                     totalTrades++;
+                    bankPerf[s].gridBuyCount++;
                     lots[s].push({ date: date, shares: buyShares, divReceived: 0 });
                     tradeLog.push({ date, stock: s, type: 'grid_buy', price: execPrice, shares: buyShares, amount: cost, fees, divTax: 0 });
                 } else {
@@ -892,6 +928,8 @@ function executeBacktest(config) {
                 loopCount++;
                 let triggerPrice = baseP[s] * (1 + gridPct);
                 let execPrice = Math.max(open, triggerPrice);
+                if (config.slippage > 0) execPrice = execPrice * (1 - config.slippage);
+                if (execPrice > limitUp || execPrice < limitDown) break;
                 let sellShares = getClosestSharesFromCount(portfolio[s] * tradeRatio);
                 if (sellShares <= 0) break;
                 if (portfolio[s] < sellShares) break;
@@ -906,6 +944,7 @@ function executeBacktest(config) {
                 totalFees += fees;
                 totalDivTax += divTax;
                 totalTrades++;
+                bankPerf[s].gridSellCount++;
                 tradeLog.push({ date, stock: s, type: 'grid_sell', price: execPrice, shares: sellShares, amount: proceeds, fees, divTax });
             }
         }
@@ -923,37 +962,42 @@ function executeBacktest(config) {
             let targetPerStock = totalValue / N;
             let rebalanceActions = [];
 
+            let rebalanceSells = [];
+            let rebalanceBuys = [];
             for (let s of banks) {
                 let price = stockPrices[s];
                 if (!price || price <= 0) continue;
                 let targetShares = getClosestShares(targetPerStock, price);
                 let diff = targetShares - (portfolio[s] || 0);
-
-                if (diff > 0) {
-                    let cost = diff * price;
-                    let fees = calcFees(cost, false);
-                    if (cash >= cost + fees) {
-                        portfolio[s] = (portfolio[s] || 0) + diff;
-                        cash -= (cost + fees);
-                        totalFees += fees;
-                        totalTrades++;
-                        lots[s].push({ date: date, shares: diff, divReceived: 0 });
-                        rebalanceActions.push({ stock: s, type: 'rebalance_buy', shares: diff, price, fees, divTax: 0 });
-                    }
-                } else if (diff < 0) {
-                    let absDiff = Math.abs(diff);
-                    let proceeds = absDiff * price;
-                    let fees = calcFees(proceeds, true);
-                    let divTax = consumeLots(s, absDiff, date);
-                    portfolio[s] = (portfolio[s] || 0) - absDiff;
-                    cash += (proceeds - fees - divTax);
-                    totalFees += fees;
-                    totalDivTax += divTax;
-                    totalTrades++;
-                    rebalanceActions.push({ stock: s, type: 'rebalance_sell', shares: absDiff, price, fees, divTax });
+                if (diff < 0) {
+                    rebalanceSells.push({ stock: s, diff: Math.abs(diff), price });
+                } else if (diff > 0) {
+                    rebalanceBuys.push({ stock: s, diff, price });
                 }
-
                 baseP[s] = price;
+            }
+            for (let a of rebalanceSells) {
+                let proceeds = a.diff * a.price;
+                let fees = calcFees(proceeds, true);
+                let divTax = consumeLots(a.stock, a.diff, date);
+                portfolio[a.stock] = (portfolio[a.stock] || 0) - a.diff;
+                cash += (proceeds - fees - divTax);
+                totalFees += fees;
+                totalDivTax += divTax;
+                totalTrades++;
+                rebalanceActions.push({ stock: a.stock, type: 'rebalance_sell', shares: a.diff, price: a.price, fees, divTax });
+            }
+            for (let a of rebalanceBuys) {
+                let cost = a.diff * a.price;
+                let fees = calcFees(cost, false);
+                if (cash >= cost + fees) {
+                    portfolio[a.stock] = (portfolio[a.stock] || 0) + a.diff;
+                    cash -= (cost + fees);
+                    totalFees += fees;
+                    totalTrades++;
+                    lots[a.stock].push({ date: date, shares: a.diff, divReceived: 0 });
+                    rebalanceActions.push({ stock: a.stock, type: 'rebalance_buy', shares: a.diff, price: a.price, fees, divTax: 0 });
+                }
             }
 
             if (rebalanceActions.length > 0) {
@@ -980,6 +1024,12 @@ function executeBacktest(config) {
         }
         equityCurve.push({ date, value: dayValue, cash });
         allocationHistory.push({ date, ...dayAlloc });
+        cashRatioHistory.push({ date, ratio: dayValue > 0 ? cash / dayValue : 0 });
+    }
+
+    for (let s of banks) {
+        let lastRow = merged[s][dates[dates.length - 1]];
+        bankPerf[s].finalValue = (portfolio[s] || 0) * (lastRow ? lastRow.Close : 0);
     }
 
     let finalValue = equityCurve.length > 0 ? equityCurve[equityCurve.length - 1].value : capital;
@@ -1019,11 +1069,9 @@ function executeBacktest(config) {
     let bhDivTaxTotal = 0;
     for (let i = 0; i < dates.length; i++) {
         let date = dates[i];
-        let bhValue = bhRemainingCash + bhDivTotal - bhDivTaxTotal;
         for (let s of banks) {
             let row = merged[s][date];
             if (!row) continue;
-            bhValue += (bhShares[s] || 0) * row.Close;
             let dc = parseFloat(row.DivCash);
             if (!isNaN(dc) && dc > 0 && bhShares[s] > 0) {
                 bhDivTotal += (bhShares[s] || 0) * dc;
@@ -1031,6 +1079,12 @@ function executeBacktest(config) {
                     lot.divReceived += dc * lot.shares;
                 }
             }
+        }
+        let bhValue = bhRemainingCash + bhDivTotal - bhDivTaxTotal;
+        for (let s of banks) {
+            let row = merged[s][date];
+            if (!row) continue;
+            bhValue += (bhShares[s] || 0) * row.Close;
         }
         bhCurve.push({ date, value: bhValue });
     }
@@ -1051,18 +1105,41 @@ function executeBacktest(config) {
     let excessReturn = totalReturn - bhTotalReturn;
     let excessAnnual = annualReturn - bhAnnualReturn;
 
+    let dailyReturns = [];
+    for (let i = 1; i < equityCurve.length; i++) {
+        dailyReturns.push((equityCurve[i].value - equityCurve[i-1].value) / equityCurve[i-1].value);
+    }
+    let avgDailyReturn = dailyReturns.length > 0 ? dailyReturns.reduce((a,b) => a+b, 0) / dailyReturns.length : 0;
+    let dailyStd = dailyReturns.length > 1 ? Math.sqrt(dailyReturns.reduce((s, r) => s + Math.pow(r - avgDailyReturn, 2), 0) / (dailyReturns.length - 1)) : 0;
+    let sharpeRatio = dailyStd > 0 ? (avgDailyReturn / dailyStd) * Math.sqrt(252) : 0;
+    let calmarRatio = (maxDrawdown < 0 && years > 0) ? annualReturn / Math.abs(maxDrawdown * 100) : 0;
+
+    let gridBuys = tradeLog.filter(t => t.type === 'grid_buy');
+    let gridSells = tradeLog.filter(t => t.type === 'grid_sell');
+    let gridWinCount = 0;
+    let gridTotalCount = gridBuys.length;
+    for (let sell of gridSells) {
+        let buy = gridBuys.find(b => b.stock === sell.stock && b.date <= sell.date);
+        if (buy && sell.price > buy.price) gridWinCount++;
+    }
+    let gridWinRate = gridTotalCount > 0 ? (gridWinCount / gridSells.length) * 100 : 0;
+
     return {
         equityCurve, allocationHistory, tradeLog, rebalanceDates, bhCurve,
         totalReturn, annualReturn, maxDrawdown, finalValue,
         totalFees, totalDividend, totalDivTax, totalTrades, totalRebalances,
         initDetails, capital, dates,
         bhTotalReturn, bhAnnualReturn, bhMaxDrawdown, bhFinalValue,
-        excessReturn, excessAnnual, dividendTax
+        excessReturn, excessAnnual, dividendTax,
+        sharpeRatio, calmarRatio, gridWinRate, gridBuys: gridBuys.length, gridSells: gridSells.length,
+        cashRatioHistory, bankPerf
     };
 }
 
 function renderResults(result, config) {
     if (result.error) { alert(result.error); return; }
+    lastResult = result;
+    lastConfig = config;
 
     let rEl = document.getElementById('m_return');
     rEl.innerText = result.totalReturn.toFixed(2) + '%';
@@ -1097,8 +1174,20 @@ function renderResults(result, config) {
     document.getElementById('m_trades').innerText = result.totalTrades;
     document.getElementById('m_rebalances').innerText = result.totalRebalances;
 
+    let sharpeEl = document.getElementById('m_sharpe');
+    sharpeEl.innerText = result.sharpeRatio.toFixed(2);
+    sharpeEl.className = 'card-value ' + (result.sharpeRatio >= 1 ? 'positive' : result.sharpeRatio >= 0 ? '' : 'negative');
+    document.getElementById('m_calmar').innerText = result.calmarRatio.toFixed(2);
+
+    let gridWinEl = document.getElementById('m_grid_win');
+    gridWinEl.innerText = result.gridWinRate.toFixed(1) + '%';
+    gridWinEl.className = 'card-value ' + (result.gridWinRate >= 50 ? 'positive' : 'negative');
+    document.getElementById('m_grid_count').innerText = result.gridBuys + '/' + result.gridSells;
+
     renderEquityChart(result, config);
     renderAllocationChart(result, config);
+    renderCashRatioChart(result, config);
+    renderBankPerfChart(result, config);
     renderTradeLog(result);
 }
 
@@ -1213,7 +1302,7 @@ function renderAllocationChart(result, config) {
     let series = [];
 
     for (let s of config.banks) {
-        let data = result.allocationHistory.map(p => (p[s] || 0).toFixed(0));
+        let data = result.allocationHistory.map(p => Math.round(p[s] || 0));
         series.push({
             name: BANK_NAMES[s],
             type: 'line',
@@ -1278,6 +1367,93 @@ function renderAllocationChart(result, config) {
     };
 
     chartAllocation.setOption(option, true);
+}
+
+let chartCashRatio = null;
+function renderCashRatioChart(result, config) {
+    if (!chartCashRatio) {
+        chartCashRatio = echarts.init(document.getElementById('chartCashRatio'), 'dark');
+    }
+    let dates = result.cashRatioHistory.map(p => p.date);
+    let ratios = result.cashRatioHistory.map(p => (p.ratio * 100).toFixed(1));
+    let avgRatio = ratios.length > 0 ? (ratios.reduce((a, b) => a + parseFloat(b), 0) / ratios.length).toFixed(1) : 0;
+    let option = {
+        backgroundColor: 'transparent',
+        title: {
+            text: '现金占总资产比例',
+            subtext: '平均现金占比: ' + avgRatio + '%',
+            left: 'left', top: 0,
+            textStyle: { color: '#e2e8f0', fontSize: 15 },
+            subtextStyle: { color: '#94a3b8', fontSize: 12 }
+        },
+        tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(30, 41, 59, 0.95)',
+            borderColor: '#475569',
+            textStyle: { color: '#e2e8f0' },
+            formatter: function(params) {
+                return `<b>${params[0].axisValue}</b><br/>${params[0].marker} 现金占比: ${params[0].value}%`;
+            }
+        },
+        grid: { left: 60, right: 30, bottom: 60, top: 60, containLabel: false },
+        dataZoom: [{ type: 'inside', start: 0, end: 100 }],
+        xAxis: { type: 'category', data: dates, axisLabel: { color: '#94a3b8', fontSize: 10 }, axisLine: { lineStyle: { color: '#334155' } } },
+        yAxis: { type: 'value', axisLabel: { color: '#94a3b8', formatter: '{value}%' }, splitLine: { lineStyle: { color: '#1e293b' } }, max: function(v) { return Math.min(v.max, 100); } },
+        series: [{
+            name: '现金占比', type: 'line', data: ratios, smooth: true,
+            lineStyle: { color: '#f59e0b', width: 1.5 },
+            areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(245,158,11,0.3)' }, { offset: 1, color: 'rgba(245,158,11,0.02)' }] } },
+            symbol: 'none'
+        }]
+    };
+    chartCashRatio.setOption(option, true);
+}
+
+let chartBankPerf = null;
+function renderBankPerfChart(result, config) {
+    if (!chartBankPerf) {
+        chartBankPerf = echarts.init(document.getElementById('chartBankPerf'), 'dark');
+    }
+    let banks = config.banks;
+    let categories = banks.map(s => BANK_NAMES[s]);
+    let divData = banks.map(s => Math.round(result.bankPerf[s].divIncome));
+    let initCostData = banks.map(s => Math.round(result.bankPerf[s].initCost));
+    let finalValueData = banks.map(s => Math.round(result.bankPerf[s].finalValue));
+    let gridBuyData = banks.map(s => result.bankPerf[s].gridBuyCount);
+    let gridSellData = banks.map(s => result.bankPerf[s].gridSellCount);
+    let option = {
+        backgroundColor: 'transparent',
+        title: {
+            text: '各银行绩效分解',
+            left: 'left', top: 0,
+            textStyle: { color: '#e2e8f0', fontSize: 15 }
+        },
+        tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(30, 41, 59, 0.95)',
+            borderColor: '#475569',
+            textStyle: { color: '#e2e8f0' }
+        },
+        legend: {
+            data: ['初始成本', '期末市值', '分红收入', '网格买入', '网格卖出'],
+            top: 25, right: 20,
+            textStyle: { color: '#94a3b8', fontSize: 11 }
+        },
+        grid: { left: 80, right: 80, bottom: 60, top: 70, containLabel: false },
+        xAxis: { type: 'category', data: categories, axisLabel: { color: '#94a3b8' }, axisLine: { lineStyle: { color: '#334155' } } },
+        yAxis: [
+            { type: 'value', name: '金额(¥)', axisLabel: { color: '#94a3b8', formatter: function(v) { return v >= 10000 ? (v/10000).toFixed(1) + '万' : v; } }, splitLine: { lineStyle: { color: '#1e293b' } } },
+            { type: 'value', name: '次数', axisLabel: { color: '#94a3b8' }, splitLine: { show: false } }
+        ],
+        series: [
+            { name: '初始成本', type: 'bar', data: initCostData, itemStyle: { color: '#64748b' }, barWidth: '15%' },
+            { name: '期末市值', type: 'bar', data: finalValueData, itemStyle: { color: '#3b82f6' }, barWidth: '15%' },
+            { name: '分红收入', type: 'bar', data: divData, itemStyle: { color: '#10b981' }, barWidth: '15%' },
+            { name: '网格买入', type: 'line', yAxisIndex: 1, data: gridBuyData, lineStyle: { color: '#f59e0b' }, itemStyle: { color: '#f59e0b' }, symbol: 'circle', symbolSize: 6 },
+            { name: '网格卖出', type: 'line', yAxisIndex: 1, data: gridSellData, lineStyle: { color: '#ef4444' }, itemStyle: { color: '#ef4444' }, symbol: 'circle', symbolSize: 6 }
+        ]
+    };
+    chartBankPerf.setOption(option, true);
 }
 
 function renderTradeLog(result) {
@@ -1347,26 +1523,52 @@ document.getElementById('cfg_end').addEventListener('change', function() {
 window.addEventListener('resize', () => {
     if (chartEquity) chartEquity.resize();
     if (chartAllocation) chartAllocation.resize();
+    if (chartCashRatio) chartCashRatio.resize();
+    if (chartBankPerf) chartBankPerf.resize();
 });
+
+let lastResult = null;
+let lastConfig = null;
+
+function exportTradeLog() {
+    if (!lastResult || !lastResult.tradeLog) { alert('请先运行回测'); return; }
+    let header = '日期,股票,类型,价格,股数,金额,手续费,红利补税\n';
+    let rows = lastResult.tradeLog.map(t =>
+        `${t.date},${BANK_NAMES[t.stock]||t.stock},${t.type==='grid_buy'?'网格买入':t.type==='grid_sell'?'网格卖出':t.type==='init_buy'?'初始建仓':t.type==='rebalance_buy'?'再平衡买入':t.type==='rebalance_sell'?'再平衡卖出':'分红'},${t.price},${t.shares},${t.amount.toFixed(2)},${t.fees.toFixed(2)},${t.divTax.toFixed(2)}`
+    ).join('\n');
+    let blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8' });
+    let a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `trade_log_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+}
+
+function exportEquityCurve() {
+    if (!lastResult || !lastResult.equityCurve) { alert('请先运行回测'); return; }
+    let header = '日期,策略净值,买入持有净值,现金占比\n';
+    let rows = lastResult.equityCurve.map((p, i) => {
+        let bhVal = lastResult.bhCurve[i] ? lastResult.bhCurve[i].value : '';
+        let cashRatio = lastResult.cashRatioHistory[i] ? (lastResult.cashRatioHistory[i].ratio * 100).toFixed(2) + '%' : '';
+        return `${p.date},${p.value.toFixed(2)},${typeof bhVal === 'number' ? bhVal.toFixed(2) : bhVal},${cashRatio}`;
+    }).join('\n');
+    let blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8' });
+    let a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `equity_curve_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+}
 
 window.addEventListener('DOMContentLoaded', async () => {
     let banks = getSelectedBanks();
-    for (let s of banks) {
-        await loadBankData(s);
-    }
+    await Promise.all(banks.map(s => loadBankData(s)));
     updateCapitalPreview();
 
     let minDate = null, maxDate = null;
     for (let s of banks) {
         let data = allBankData[s];
         if (data && data.length > 0) {
-            let first = data[0].Date;
-            let last = data[data.length - 1].Date;
-            [first, last].forEach((d, i) => {
-                if (typeof d === 'number') d = String(d);
-                if (typeof d === 'string' && d.length > 10) d = d.substring(0, 10);
-                if (i === 0) first = d; else last = d;
-            });
+            let first = normalizeDate(data[0].Date);
+            let last = normalizeDate(data[data.length - 1].Date);
             if (!minDate || first < minDate) minDate = first;
             if (!maxDate || last > maxDate) maxDate = last;
         }
@@ -1377,9 +1579,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         for (let s of banks) {
             let data = allBankData[s];
             if (!data || data.length === 0) continue;
-            let last = data[data.length - 1].Date;
-            if (typeof last === 'number') last = String(last);
-            if (typeof last === 'string' && last.length > 10) last = last.substring(0, 10);
+            let last = normalizeDate(data[data.length - 1].Date);
             if (last < validMax) validMax = last;
         }
         document.getElementById('cfg_end').value = validMax;
