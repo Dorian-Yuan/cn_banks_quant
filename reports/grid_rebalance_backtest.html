@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>波段再平准策略 V1.2.1 · 多银行网格回测系统</title>
+    <title>波段再平准策略 V1.2.2 · 多银行网格回测系统</title>
     <link rel="icon" type="image/png" href="../assets/icon/grid_rebalance_logo.png">
     <link rel="apple-touch-icon" href="../assets/icon/grid_rebalance_logo.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -209,7 +209,7 @@
 <div class="dashboard">
     <div class="sidebar">
         <div class="header">
-            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.1</span></h2>
+            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.2</span></h2>
             <p>多银行网格交易 · 交互式回测系统</p>
         </div>
 
@@ -558,6 +558,10 @@ function getClosestSharesFromCount(targetCount) {
     return rounded;
 }
 
+function roundPrice(price) {
+    return Math.round(price * 100) / 100;
+}
+
 function getSelectedBanks() {
     let checks = document.querySelectorAll('#bankGrid input[type="checkbox"]:checked');
     return Array.from(checks).map(c => c.value);
@@ -618,7 +622,7 @@ function updateCapitalPreview() {
             return normalizeDate(r.Date) >= firstDate;
         });
         if (!row) row = data[0];
-        let price = row.Close;
+        let price = roundPrice(row.Close);
         let shares = getClosestShares(perStock, price);
         let actualCost = shares * price + calcFees(shares * price, false);
         totalActualCost += actualCost;
@@ -838,7 +842,7 @@ function executeBacktest(config) {
         if (plan.shares <= 0) {
             let row = merged[s][firstDate];
             portfolio[s] = 0;
-            baseP[s] = row && row.Close ? row.Close : 0;
+            baseP[s] = row && row.Close ? roundPrice(row.Close) : 0;
             initDetails[s] = { shares: 0, price: baseP[s], cost: 0 };
             continue;
         }
@@ -933,9 +937,9 @@ function executeBacktest(config) {
             let loopCount = 0;
             while (low <= baseP[s] * (1 - gridBuyPct) && loopCount < 5) {
                 loopCount++;
-                let triggerPrice = baseP[s] * (1 - gridBuyPct);
-                let execPrice = Math.min(open, triggerPrice);
-                if (config.slippage > 0) execPrice = execPrice * (1 + config.slippage);
+                let triggerPrice = roundPrice(baseP[s] * (1 - gridBuyPct));
+                let execPrice = roundPrice(Math.min(open, triggerPrice));
+                if (config.slippage > 0) execPrice = roundPrice(execPrice * (1 + config.slippage));
                 if (execPrice > limitUp || execPrice < limitDown) break;
                 let buyShares = getClosestSharesFromCount(portfolio[s] * tradeRatio);
                 if (buyShares <= 0) break;
@@ -960,9 +964,9 @@ function executeBacktest(config) {
             loopCount = 0;
             while (high >= baseP[s] * (1 + gridSellPct) && loopCount < 5) {
                 loopCount++;
-                let triggerPrice = baseP[s] * (1 + gridSellPct);
-                let execPrice = Math.max(open, triggerPrice);
-                if (config.slippage > 0) execPrice = execPrice * (1 - config.slippage);
+                let triggerPrice = roundPrice(baseP[s] * (1 + gridSellPct));
+                let execPrice = roundPrice(Math.max(open, triggerPrice));
+                if (config.slippage > 0) execPrice = roundPrice(execPrice * (1 - config.slippage));
                 if (execPrice > limitUp || execPrice < limitDown) break;
                 let sellShares = getClosestSharesFromCount(portfolio[s] * tradeRatio);
                 if (sellShares <= 0) break;
@@ -996,7 +1000,7 @@ function executeBacktest(config) {
             let stockPrices = {};
             for (let s of banks) {
                 let row = merged[s][date];
-                let p = row ? row.Close : 0;
+                let p = row ? roundPrice(row.Close) : 0;
                 stockPrices[s] = p;
                 totalValue += (portfolio[s] || 0) * p;
             }
@@ -1016,7 +1020,7 @@ function executeBacktest(config) {
                 } else if (diff > 0) {
                     rebalanceBuys.push({ stock: s, diff, price });
                 }
-                baseP[s] = price;
+                baseP[s] = roundPrice(price);
             }
             for (let a of rebalanceSells) {
                 let sellDiff = a.diff;
