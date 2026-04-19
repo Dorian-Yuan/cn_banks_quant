@@ -1,0 +1,75 @@
+name: Daily Data Update
+
+on:
+  schedule:
+    - cron: '0 12 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy akshare --quiet
+
+      - name: Run data fetch
+        run: |
+          cd fetchers
+          python fetch_banks_qq_qfq.py
+        continue-on-error: false
+
+      - name: Validate data files
+        run: |
+          for f in data/ashare/*.csv; do
+            lines=$(wc -l < "$f")
+            if [ "$lines" -lt 10 ]; then
+              echo "ERROR: $f has only $lines lines"
+              exit 1
+            fi
+            echo "OK: $f ($lines lines)"
+          done
+
+      - name: Git commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/ashare/*.csv
+          if git diff --cached --quiet; then
+            echo "No data changes to commit"
+          else
+            git commit -m "auto: update daily data $(date +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: Trigger Pages deploy
+        if: success()
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: Deploy to GitHub Pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: BARK Notification - Success
+        if: success()
+        run: |
+          curl -s "https://api.day.app/${{ secrets.BARK_KEY }}/cn_banks_quant_update_success?group=quant&title=数据更新成功&body=银行回测数据已更新并部署" || true
+
+      - name: BARK Notification - Failure
+        if: failure()
+        run: |
+          curl -s "https://api.day.app/${{ secrets.BARK_KEY }}/cn_banks_quant_update_failed?group=quant&title=数据更新失败&body=请检查GitHub Actions日志" || true

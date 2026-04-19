@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>波段再平准策略 V1.0.4 · 多银行网格回测系统</title>
+    <title>波段再平准策略 V1.2.0 · 多银行网格回测系统</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <style>
@@ -204,7 +204,7 @@
 <div class="dashboard">
     <div class="sidebar">
         <div class="header">
-            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.0.4</span></h2>
+            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.0</span></h2>
             <p>多银行网格交易 · 交互式回测系统</p>
         </div>
 
@@ -256,13 +256,23 @@
                 <input type="number" id="cfg_capital" value="30000" min="1000" step="1000">
             </div>
             <div class="capital-preview" id="capitalPreview">选择银行后自动计算分配方案</div>
-            <div class="field">
-                <label>网格触发百分比 (%)</label>
-                <input type="number" id="cfg_grid_pct" value="2" min="1" max="20" step="0.5">
+            <div class="row">
+                <div class="field">
+                    <label>卖出触发 (%)</label>
+                    <input type="number" id="cfg_grid_sell_pct" value="2" min="0.5" max="20" step="0.5">
+                </div>
+                <div class="field">
+                    <label>买入触发 (%)</label>
+                    <input type="number" id="cfg_grid_buy_pct" value="2" min="0.5" max="20" step="0.5">
+                </div>
             </div>
             <div class="field">
                 <label>每次调仓比例 (%)</label>
                 <input type="number" id="cfg_trade_ratio" value="20" min="5" max="50" step="5">
+            </div>
+            <div class="field">
+                <label>最低底仓 (%)</label>
+                <input type="number" id="cfg_min_position" value="50" min="0" max="100" step="10">
             </div>
             <div class="field" style="margin-bottom:0;">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
@@ -414,6 +424,17 @@
                 <div class="card-right">
                     <div class="card-bh-title">买/卖次数</div>
                     <div class="card-bh-value" id="m_grid_count">--</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-left">
+                    <div class="card-title">Alpha超额(年化)</div>
+                    <div class="card-value" id="m_alpha_annual" style="font-size:20px;">--</div>
+                </div>
+                <div class="card-right">
+                    <div class="card-bh-title">中证银行指数</div>
+                    <div class="card-bh-value" id="m_index_annual">--</div>
+                    <div class="card-bh-excess" id="m_alpha_total"></div>
                 </div>
             </div>
         </div>
@@ -635,7 +656,7 @@ function updateBankTooltips() {
         let startPrice = startRow.Close;
         let endPrice = endRow.Close;
         let changePct = ((endPrice / startPrice - 1) * 100).toFixed(2);
-        let color = changePct >= 0 ? 'var(--success)' : 'var(--danger)';
+        let color = changePct >= 0 ? '#ef4444' : '#22c55e';
         let sign = changePct >= 0 ? '+' : '';
         
         tooltip.innerHTML = `起始: ¥${startPrice.toFixed(2)}<br>最终: ¥${endPrice.toFixed(2)}<br>变动: <span style="color:${color}">${sign}${changePct}%</span>`;
@@ -679,6 +700,7 @@ async function runBacktest() {
 
         loadingText.textContent = '正在加载数据...';
         await Promise.all(banks.map(s => loadBankData(s)));
+        await loadBankData('399986');
 
         loadingText.textContent = '正在执行回测计算...';
         await new Promise(r => setTimeout(r, 50));
@@ -688,7 +710,9 @@ async function runBacktest() {
             start: document.getElementById('cfg_start').value,
             end: document.getElementById('cfg_end').value,
             capital: parseFloat(document.getElementById('cfg_capital').value) || 30000,
-            gridPct: (parseFloat(document.getElementById('cfg_grid_pct').value) || 2) / 100,
+            gridSellPct: (parseFloat(document.getElementById('cfg_grid_sell_pct').value) || 2) / 100,
+            gridBuyPct: (parseFloat(document.getElementById('cfg_grid_buy_pct').value) || 2) / 100,
+            minPosition: (parseFloat(document.getElementById('cfg_min_position').value) || 50) / 100,
             tradeRatio: (parseFloat(document.getElementById('cfg_trade_ratio').value) || 20) / 100,
             rebalancePeriod: getRebalancePeriod(),
             dividendTax: document.getElementById('cfg_dividend_tax').checked,
@@ -710,7 +734,7 @@ async function runBacktest() {
 }
 
 function executeBacktest(config) {
-    let { banks, start, end, capital, gridPct, tradeRatio, rebalancePeriod, dividendTax } = config;
+    let { banks, start, end, capital, gridSellPct, gridBuyPct, minPosition, tradeRatio, rebalancePeriod, dividendTax } = config;
 
     let merged = {};
     let allDates = new Set();
@@ -824,6 +848,11 @@ function executeBacktest(config) {
         bankPerf[s].initCost = plan.cost + plan.fees;
     }
 
+    let initShares = {};
+    for (let s of banks) {
+        initShares[s] = portfolio[s] || 0;
+    }
+
     function parseLocalDate(str) {
         let [y, m, d] = String(str).split('-').map(Number);
         return new Date(y, m - 1, d);
@@ -897,9 +926,9 @@ function executeBacktest(config) {
             let limitDown = config.limitCheck ? prevClose * 0.9 : 0;
 
             let loopCount = 0;
-            while (low <= baseP[s] * (1 - gridPct) && loopCount < 5) {
+            while (low <= baseP[s] * (1 - gridBuyPct) && loopCount < 5) {
                 loopCount++;
-                let triggerPrice = baseP[s] * (1 - gridPct);
+                let triggerPrice = baseP[s] * (1 - gridBuyPct);
                 let execPrice = Math.min(open, triggerPrice);
                 if (config.slippage > 0) execPrice = execPrice * (1 + config.slippage);
                 if (execPrice > limitUp || execPrice < limitDown) break;
@@ -924,15 +953,23 @@ function executeBacktest(config) {
             }
 
             loopCount = 0;
-            while (high >= baseP[s] * (1 + gridPct) && loopCount < 5) {
+            while (high >= baseP[s] * (1 + gridSellPct) && loopCount < 5) {
                 loopCount++;
-                let triggerPrice = baseP[s] * (1 + gridPct);
+                let triggerPrice = baseP[s] * (1 + gridSellPct);
                 let execPrice = Math.max(open, triggerPrice);
                 if (config.slippage > 0) execPrice = execPrice * (1 - config.slippage);
                 if (execPrice > limitUp || execPrice < limitDown) break;
                 let sellShares = getClosestSharesFromCount(portfolio[s] * tradeRatio);
                 if (sellShares <= 0) break;
                 if (portfolio[s] < sellShares) break;
+
+                if (minPosition > 0 && initShares[s] > 0) {
+                    let minShares = getClosestSharesFromCount(initShares[s] * minPosition);
+                    if (portfolio[s] - sellShares < minShares) {
+                        sellShares = Math.max(0, portfolio[s] - minShares);
+                        if (sellShares <= 0) break;
+                    }
+                }
 
                 let proceeds = sellShares * execPrice;
                 let fees = calcFees(proceeds, true);
@@ -977,15 +1014,23 @@ function executeBacktest(config) {
                 baseP[s] = price;
             }
             for (let a of rebalanceSells) {
-                let proceeds = a.diff * a.price;
+                let sellDiff = a.diff;
+                if (minPosition > 0 && initShares[a.stock] > 0) {
+                    let minShares = getClosestSharesFromCount(initShares[a.stock] * minPosition);
+                    if ((portfolio[a.stock] || 0) - sellDiff < minShares) {
+                        sellDiff = Math.max(0, (portfolio[a.stock] || 0) - minShares);
+                    }
+                }
+                if (sellDiff <= 0) continue;
+                let proceeds = sellDiff * a.price;
                 let fees = calcFees(proceeds, true);
-                let divTax = consumeLots(a.stock, a.diff, date);
-                portfolio[a.stock] = (portfolio[a.stock] || 0) - a.diff;
+                let divTax = consumeLots(a.stock, sellDiff, date);
+                portfolio[a.stock] = (portfolio[a.stock] || 0) - sellDiff;
                 cash += (proceeds - fees - divTax);
                 totalFees += fees;
                 totalDivTax += divTax;
                 totalTrades++;
-                rebalanceActions.push({ stock: a.stock, type: 'rebalance_sell', shares: a.diff, price: a.price, fees, divTax });
+                rebalanceActions.push({ stock: a.stock, type: 'rebalance_sell', shares: sellDiff, price: a.price, fees, divTax });
             }
             for (let a of rebalanceBuys) {
                 let cost = a.diff * a.price;
@@ -1105,6 +1150,42 @@ function executeBacktest(config) {
     let excessReturn = totalReturn - bhTotalReturn;
     let excessAnnual = annualReturn - bhAnnualReturn;
 
+    let indexData = allBankData['399986'] || [];
+    let indexCurve = [];
+    let indexTotalReturn = 0;
+    let indexAnnualReturn = 0;
+    let alphaReturn = 0;
+    let alphaAnnual = 0;
+    if (indexData.length > 0) {
+        let indexMerged = {};
+        for (let row of indexData) {
+            let d = normalizeDate(row.Date);
+            if (d >= start && d <= end) {
+                indexMerged[d] = row.Close;
+            }
+        }
+        let indexStartPrice = null;
+        let lastIndexVal = null;
+        for (let date of dates) {
+            if (indexMerged[date] != null) {
+                if (indexStartPrice == null) {
+                    indexStartPrice = indexMerged[date];
+                }
+                lastIndexVal = capital * (indexMerged[date] / indexStartPrice);
+                indexCurve.push({ date, value: lastIndexVal });
+            } else if (indexStartPrice && lastIndexVal != null) {
+                indexCurve.push({ date, value: lastIndexVal });
+            }
+        }
+        if (indexStartPrice && indexCurve.length > 0) {
+            let indexFinalValue = indexCurve[indexCurve.length - 1].value;
+            indexTotalReturn = (indexFinalValue / capital - 1) * 100;
+            indexAnnualReturn = years > 0 ? (Math.pow(indexFinalValue / capital, 1 / years) - 1) * 100 : 0;
+            alphaReturn = totalReturn - indexTotalReturn;
+            alphaAnnual = annualReturn - indexAnnualReturn;
+        }
+    }
+
     let dailyReturns = [];
     for (let i = 1; i < equityCurve.length; i++) {
         dailyReturns.push((equityCurve[i].value - equityCurve[i-1].value) / equityCurve[i-1].value);
@@ -1125,12 +1206,13 @@ function executeBacktest(config) {
     let gridWinRate = gridTotalCount > 0 ? (gridWinCount / gridSells.length) * 100 : 0;
 
     return {
-        equityCurve, allocationHistory, tradeLog, rebalanceDates, bhCurve,
+        equityCurve, allocationHistory, tradeLog, rebalanceDates, bhCurve, indexCurve,
         totalReturn, annualReturn, maxDrawdown, finalValue,
         totalFees, totalDividend, totalDivTax, totalTrades, totalRebalances,
         initDetails, capital, dates,
         bhTotalReturn, bhAnnualReturn, bhMaxDrawdown, bhFinalValue,
         excessReturn, excessAnnual, dividendTax,
+        indexTotalReturn, indexAnnualReturn, alphaReturn, alphaAnnual,
         sharpeRatio, calmarRatio, gridWinRate, gridBuys: gridBuys.length, gridSells: gridSells.length,
         cashRatioHistory, bankPerf
     };
@@ -1184,6 +1266,13 @@ function renderResults(result, config) {
     gridWinEl.className = 'card-value ' + (result.gridWinRate >= 50 ? 'positive' : 'negative');
     document.getElementById('m_grid_count').innerText = result.gridBuys + '/' + result.gridSells;
 
+    let alphaAnnualEl = document.getElementById('m_alpha_annual');
+    alphaAnnualEl.innerText = (result.alphaAnnual >= 0 ? '+' : '') + result.alphaAnnual.toFixed(2) + '%';
+    alphaAnnualEl.className = 'card-value ' + (result.alphaAnnual >= 0 ? 'positive' : 'negative');
+    document.getElementById('m_index_annual').innerText = result.indexAnnualReturn.toFixed(2) + '%';
+    let alphaTotalSign = result.alphaReturn >= 0 ? '+' : '';
+    document.getElementById('m_alpha_total').innerHTML = `总超额 <span style="color:${result.alphaReturn >= 0 ? 'var(--success)' : 'var(--danger)'}">${alphaTotalSign}${result.alphaReturn.toFixed(2)}%</span>`;
+
     renderEquityChart(result, config);
     renderAllocationChart(result, config);
     renderCashRatioChart(result, config);
@@ -1199,6 +1288,7 @@ function renderEquityChart(result, config) {
     let dates = result.equityCurve.map(p => p.date);
     let values = result.equityCurve.map(p => p.value);
     let bhValues = result.bhCurve.map(p => p.value);
+    let indexValues = result.indexCurve && result.indexCurve.length > 0 ? result.indexCurve.map(p => p.value) : [];
     let rebalanceMarks = result.rebalanceDates;
 
     let markLineData = rebalanceMarks.map(d => ({
@@ -1210,7 +1300,7 @@ function renderEquityChart(result, config) {
     let option = {
         backgroundColor: 'transparent',
         title: {
-            text: '策略净值曲线 vs 买入持有',
+            text: '策略净值曲线 vs 基准',
             left: 'left',
             top: 0,
             textStyle: { color: '#e2e8f0', fontSize: 15 }
@@ -1223,13 +1313,15 @@ function renderEquityChart(result, config) {
             formatter: function(params) {
                 let s = `<b>${params[0].axisValue}</b><br/>`;
                 for (let p of params) {
-                    s += `${p.marker} ${p.seriesName}: ¥${p.value.toFixed(0)}<br/>`;
+                    if (p.seriesType === 'line') {
+                        s += `${p.marker} ${p.seriesName}: ¥${p.value.toFixed(0)}<br/>`;
+                    }
                 }
                 return s;
             }
         },
         legend: {
-            data: ['网格再平准策略', '买入持有基准'],
+            data: indexValues.length > 0 ? ['网格再平准策略', '买入持有基准', '中证银行指数'] : ['网格再平准策略', '买入持有基准'],
             top: 25, right: 20,
             textStyle: { color: '#94a3b8' }
         },
@@ -1277,6 +1369,14 @@ function renderEquityChart(result, config) {
                 data: bhValues,
                 lineStyle: { width: 1.5, color: '#94a3b8', type: 'dashed' }
             },
+            ...(indexValues.length > 0 ? [{
+                name: '中证银行指数',
+                type: 'line',
+                smooth: true,
+                showSymbol: false,
+                data: indexValues,
+                lineStyle: { width: 1.5, color: '#f59e0b', type: 'dotted' }
+            }] : []),
             {
                 name: '初始本金',
                 type: 'line',
@@ -1545,11 +1645,12 @@ function exportTradeLog() {
 
 function exportEquityCurve() {
     if (!lastResult || !lastResult.equityCurve) { alert('请先运行回测'); return; }
-    let header = '日期,策略净值,买入持有净值,现金占比\n';
+    let header = '日期,策略净值,买入持有净值,中证银行指数净值,现金占比\n';
     let rows = lastResult.equityCurve.map((p, i) => {
         let bhVal = lastResult.bhCurve[i] ? lastResult.bhCurve[i].value : '';
+        let indexVal = lastResult.indexCurve && lastResult.indexCurve[i] ? lastResult.indexCurve[i].value : '';
         let cashRatio = lastResult.cashRatioHistory[i] ? (lastResult.cashRatioHistory[i].ratio * 100).toFixed(2) + '%' : '';
-        return `${p.date},${p.value.toFixed(2)},${typeof bhVal === 'number' ? bhVal.toFixed(2) : bhVal},${cashRatio}`;
+        return `${p.date},${p.value.toFixed(2)},${typeof bhVal === 'number' ? bhVal.toFixed(2) : bhVal},${typeof indexVal === 'number' ? indexVal.toFixed(2) : indexVal},${cashRatio}`;
     }).join('\n');
     let blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8' });
     let a = document.createElement('a');
@@ -1561,6 +1662,7 @@ function exportEquityCurve() {
 window.addEventListener('DOMContentLoaded', async () => {
     let banks = getSelectedBanks();
     await Promise.all(banks.map(s => loadBankData(s)));
+    await loadBankData('399986');
     updateCapitalPreview();
 
     let minDate = null, maxDate = null;

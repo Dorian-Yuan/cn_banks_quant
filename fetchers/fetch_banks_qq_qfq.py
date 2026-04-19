@@ -26,8 +26,10 @@ BIG6_BANKS = {
     "601658": "邮储银行",
 }
 
+BANK_INDEX = {"399986": "中证银行"}
+
 END_DATE = datetime.today().strftime("%Y-%m-%d")
-START_DATE = (datetime.today() - timedelta(days=365 * 10 + 5)).strftime("%Y-%m-%d")
+START_DATE = "2015-01-01"
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -36,14 +38,14 @@ HEADERS = {
 QQ_MAX_COUNT = 800
 
 
-def fetch_kline_qq_qfq(symbol):
-    qq_symbol = f"sh{symbol}"
+def fetch_kline_qq(symbol, market_prefix="sh", fq="qfq"):
+    qq_symbol = f"{market_prefix}{symbol}"
     all_rows = []
     end_dt = END_DATE
-    print(f"  [{symbol}] 获取前复权K线 (腾讯财经, 分页) {START_DATE}→{END_DATE}...")
+    print(f"  [{symbol}] 获取K线 (腾讯财经, 分页, {fq}) {START_DATE}→{END_DATE}...")
 
     for page in range(10):
-        url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={qq_symbol},day,,{end_dt},{QQ_MAX_COUNT},qfq"
+        url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={qq_symbol},day,,{end_dt},{QQ_MAX_COUNT},{fq}"
         for attempt in range(3):
             try:
                 req = urllib.request.Request(url, headers=HEADERS)
@@ -54,7 +56,10 @@ def fetch_kline_qq_qfq(symbol):
                     print(f"    第{page+1}页: API返回错误")
                     break
                 sh_data = data['data'].get(qq_symbol, {})
-                klines = sh_data.get('qfqday', [])
+                if fq == "qfq":
+                    klines = sh_data.get('qfqday', [])
+                else:
+                    klines = sh_data.get('day', [])
                 if not klines:
                     print(f"    第{page+1}页: 无数据")
                     break
@@ -169,7 +174,7 @@ def build_and_save(symbol, name):
     print(f"\n{'='*55}")
     print(f"[{symbol} {name}] START")
 
-    kline = fetch_kline_qq_qfq(symbol)
+    kline = fetch_kline_qq(symbol, market_prefix="sh", fq="qfq")
     if kline.empty:
         print(f"  [{symbol}] K线获取失败，跳过")
         return
@@ -204,15 +209,35 @@ def build_and_save(symbol, name):
     print(f"    最新PB: {pb_now:.3f} | 合计分红现金流: {total_div:.4f} 元/股")
 
 
+def build_index(symbol, name):
+    print(f"\n{'='*55}")
+    print(f"[{symbol} {name}] START (指数)")
+
+    kline = fetch_kline_qq(symbol, market_prefix="sz", fq="")
+    if kline.empty:
+        print(f"  [{symbol}] K线获取失败，跳过")
+        return
+
+    csv_path = os.path.join(DATA_DIR, f"{symbol}.csv")
+    kline.to_csv(csv_path, encoding="utf-8-sig")
+
+    print(f"  [{symbol}] 保存完成: {csv_path}")
+    print(f"    行数: {len(kline)}  ({kline.index[0].date()} ~ {kline.index[-1].date()})")
+
+
 if __name__ == "__main__":
     print("=" * 55)
-    print("六大行 10年 日K(前复权) + PB + 分红 数据抓取程序")
-    print("数据源: 腾讯财经(K线前复权) + AkShare(PB) + 东方财富(分红)")
+    print("六大行 + 银行指数 日K(前复权) + PB + 分红 数据抓取程序")
+    print("数据源: 腾讯财经(K线) + AkShare(PB) + 东方财富(分红)")
     print(f"时间范围: {START_DATE} → {END_DATE}")
     print("=" * 55)
 
     for symbol, name in BIG6_BANKS.items():
         build_and_save(symbol, name)
+        time.sleep(2)
+
+    for symbol, name in BANK_INDEX.items():
+        build_index(symbol, name)
         time.sleep(2)
 
     print("\n" + "=" * 55)
