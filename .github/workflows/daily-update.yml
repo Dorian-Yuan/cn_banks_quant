@@ -57,19 +57,12 @@ jobs:
             git push
           fi
 
-      - name: Trigger Pages deploy
-        if: success()
-        uses: benc-uk/workflow-dispatch@v1
-        with:
-          workflow: Deploy to GitHub Pages
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: BARK Notification - Success
-        if: success()
+      - name: BARK Notification
+        if: always()
         run: |
-          curl -s "https://api.day.app/${{ secrets.BARK_KEY }}/cn_banks_quant_update_success?group=quant&title=数据更新成功&body=银行回测数据已更新并部署" || true
-
-      - name: BARK Notification - Failure
-        if: failure()
-        run: |
-          curl -s "https://api.day.app/${{ secrets.BARK_KEY }}/cn_banks_quant_update_failed?group=quant&title=数据更新失败&body=请检查GitHub Actions日志" || true
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            curl -s "https://api.day.app/${{ secrets.BARK_KEY }}/cn_banks_quant_ok?group=quant&title=数据更新成功&body=银行回测数据已更新并部署" || true
+          else
+            curl -s "https://api.day.app/${{ secrets.BARK_KEY }}/cn_banks_quant_fail?group=quant&title=数据更新失败&body=请检查GitHub Actions日志" || true
+          fi
