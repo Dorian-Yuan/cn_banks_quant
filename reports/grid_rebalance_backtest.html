@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>波段再平准策略 V1.2.2 · 多银行网格回测系统</title>
+    <title>波段再平准策略 V1.2.3 · 多银行网格回测系统</title>
     <link rel="icon" type="image/png" href="../assets/icon/grid_rebalance_logo.png">
     <link rel="apple-touch-icon" href="../assets/icon/grid_rebalance_logo.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -209,7 +209,7 @@
 <div class="dashboard">
     <div class="sidebar">
         <div class="header">
-            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.2</span></h2>
+            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.3</span></h2>
             <p>多银行网格交易 · 交互式回测系统</p>
         </div>
 
@@ -220,6 +220,7 @@
                 <label><input type="radio" name="cfg_quick_range" value="2" onclick="setQuickRange(2)"><span>近2年</span></label>
                 <label><input type="radio" name="cfg_quick_range" value="3" onclick="setQuickRange(3)"><span>近3年</span></label>
                 <label><input type="radio" name="cfg_quick_range" value="5" onclick="setQuickRange(5)"><span>近5年</span></label>
+                <label onclick="setRandomRange()" style="cursor:pointer;border-color:#f59e0b;"><span style="color:#f59e0b;">🎲 随机</span></label>
             </div>
             <div class="row">
                 <div class="field">
@@ -579,6 +580,25 @@ function setQuickRange(years) {
     d.setFullYear(d.getFullYear() - years);
     let startDate = d.toISOString().split('T')[0];
     startInput.value = startDate;
+    updateCapitalPreview();
+    updateBankTooltips();
+}
+
+function setRandomRange() {
+    let minStart = new Date('2019-12-10');
+    let maxEnd = new Date();
+    let minDurationDays = 60;
+    let totalRangeDays = Math.floor((maxEnd - minStart) / 86400000);
+    let maxStartOffset = totalRangeDays - minDurationDays;
+    let startOffset = Math.floor(Math.random() * maxStartOffset);
+    let startDate = new Date(minStart.getTime() + startOffset * 86400000);
+    let remainingDays = totalRangeDays - startOffset;
+    let duration = minDurationDays + Math.floor(Math.random() * (remainingDays - minDurationDays + 1));
+    let endDate = new Date(startDate.getTime() + duration * 86400000);
+    if (endDate > maxEnd) endDate = new Date(maxEnd);
+    document.getElementById('cfg_start').value = startDate.toISOString().split('T')[0];
+    document.getElementById('cfg_end').value = endDate.toISOString().split('T')[0];
+    document.querySelectorAll('input[name="cfg_quick_range"]').forEach(r => r.checked = false);
     updateCapitalPreview();
     updateBankTooltips();
 }
