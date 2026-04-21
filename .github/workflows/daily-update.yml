@@ -10,9 +10,16 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,12 +64,30 @@ jobs:
             git push
           fi
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
       - name: BARK Notification
         if: always()
         run: |
           STATUS="${{ job.status }}"
           if [ "$STATUS" = "success" ]; then
-            curl -s "https://api.day.app/${{ secrets.BARK_KEY }}/cn_banks_quant_ok?group=quant&title=数据更新成功&body=银行回测数据已更新并部署" || true
+            curl -s -G "https://api.day.app/${{ secrets.BARK_KEY }}/cn_banks_quant_ok" \
+              --data-urlencode "group=quant" \
+              --data-urlencode "title=数据更新成功" \
+              --data-urlencode "body=银行回测数据已更新并部署" || true
           else
-            curl -s "https://api.day.app/${{ secrets.BARK_KEY }}/cn_banks_quant_fail?group=quant&title=数据更新失败&body=请检查GitHub Actions日志" || true
+            curl -s -G "https://api.day.app/${{ secrets.BARK_KEY }}/cn_banks_quant_fail" \
+              --data-urlencode "group=quant" \
+              --data-urlencode "title=数据更新失败" \
+              --data-urlencode "body=请检查GitHub Actions日志" || true
           fi
