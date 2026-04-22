@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>波段再平准策略 V1.2.6 · 多银行网格回测系统</title>
+    <title>波段再平准策略 V1.2.7 · 多银行网格回测系统</title>
     <link rel="icon" type="image/png" href="../assets/icon/grid_rebalance_logo.png">
     <link rel="apple-touch-icon" href="../assets/icon/grid_rebalance_logo.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -209,7 +209,7 @@
 <div class="dashboard">
     <div class="sidebar">
         <div class="header">
-            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.6</span></h2>
+            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.7</span></h2>
             <p>多银行网格交易 · 交互式回测系统</p>
         </div>
 
@@ -934,8 +934,8 @@ function executeBacktest(config) {
         let date = dates[i];
         let nextDate = i + 1 < dates.length ? dates[i + 1] : null;
 
-        let todayBought = {};
-        for (let s of banks) todayBought[s] = 0;
+        let openPosition = {};
+        for (let s of banks) openPosition[s] = portfolio[s] || 0;
 
         for (let s of banks) {
             let row = merged[s][date];
@@ -981,7 +981,6 @@ function executeBacktest(config) {
 
                 if (cash >= cost + fees) {
                     portfolio[s] += buyShares;
-                    todayBought[s] += buyShares;
                     cash -= (cost + fees);
                     baseP[s] = execPrice;
                     totalFees += fees;
@@ -1006,7 +1005,7 @@ function executeBacktest(config) {
                 if (portfolio[s] < sellShares) break;
 
                 if (tPlus1) {
-                    let maxSellable = Math.floor((portfolio[s] - todayBought[s]) / 100) * 100;
+                    let maxSellable = Math.floor(openPosition[s] / 100) * 100;
                     if (sellShares > maxSellable) sellShares = maxSellable;
                     if (sellShares <= 0) break;
                 }
@@ -1070,7 +1069,7 @@ function executeBacktest(config) {
                     }
                 }
                 if (tPlus1) {
-                    let maxSellable = Math.floor(((portfolio[a.stock] || 0) - todayBought[a.stock]) / 100) * 100;
+                    let maxSellable = Math.floor(openPosition[a.stock] / 100) * 100;
                     if (sellDiff > maxSellable) sellDiff = maxSellable;
                 }
                 if (sellDiff <= 0) continue;
@@ -1089,7 +1088,6 @@ function executeBacktest(config) {
                 let fees = calcFees(cost, false);
                 if (cash >= cost + fees) {
                     portfolio[a.stock] = (portfolio[a.stock] || 0) + a.diff;
-                    todayBought[a.stock] += a.diff;
                     cash -= (cost + fees);
                     totalFees += fees;
                     totalTrades++;

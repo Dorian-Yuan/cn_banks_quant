@@ -285,7 +285,7 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
                     lot['div_received'] += div_cash * lot['shares']
 
         if config.enable_grid:
-            today_bought = {s: 0 for s in banks}
+            open_position = {s: portfolio[s] or 0 for s in banks}
             for s in banks:
                 open_p = fast[s]['open'][idx]
                 high = fast[s]['high'][idx]
@@ -314,7 +314,6 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
                     fees = calc_fees(cost, False, config)
                     if cash >= cost + fees:
                         portfolio[s] += buy_shares
-                        today_bought[s] += buy_shares
                         cash -= (cost + fees)
                         base_p[s] = exec_price
                         total_fees += fees
@@ -339,7 +338,7 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
                     if portfolio[s] < sell_shares:
                         break
                     if config.t_plus_1:
-                        max_sellable = ((portfolio[s] - today_bought[s]) // 100) * 100
+                        max_sellable = (open_position[s] // 100) * 100
                         if sell_shares > max_sellable:
                             sell_shares = max_sellable
                         if sell_shares <= 0:
@@ -395,7 +394,7 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
                         if (portfolio[a['stock']] or 0) - sell_diff < min_shares:
                             sell_diff = max(0, (portfolio[a['stock']] or 0) - min_shares)
                     if config.t_plus_1:
-                        max_sellable = ((portfolio[a['stock']] - today_bought[a['stock']]) // 100) * 100
+                        max_sellable = (open_position[a['stock']] // 100) * 100
                         if sell_diff > max_sellable:
                             sell_diff = max_sellable
                     if sell_diff <= 0:
@@ -414,7 +413,6 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
                     fees = calc_fees(cost, False, config)
                     if cash >= cost + fees:
                         portfolio[a['stock']] = (portfolio[a['stock']] or 0) + a['diff']
-                        today_bought[a['stock']] += a['diff']
                         cash -= (cost + fees)
                         total_fees += fees
                         total_trades += 1
