@@ -100,6 +100,24 @@ def fetch_kline_qq(symbol, market_prefix="sh", fq="qfq"):
     df.set_index("Date", inplace=True)
     df = df[~df.index.duplicated(keep='first')]
     print(f"    K线总行数: {len(df)}  ({df.index[0].date()} ~ {df.index[-1].date()})")
+
+    today_str = END_DATE
+    if len(df) > 0 and df.index[-1].strftime("%Y-%m-%d") < today_str and fq == "qfq":
+        print(f"    qfq数据未更新到今天({today_str})，尝试从不复权数据补充...")
+        nfq_df = fetch_kline_qq(symbol, market_prefix=market_prefix, fq="")
+        if not nfq_df.empty and len(nfq_df) > 0:
+            missing_dates = nfq_df.index.difference(df.index)
+            if len(missing_dates) > 0:
+                last_qfq_close = df["Close"].iloc[-1]
+                last_nfq_close = nfq_df["Close"].iloc[nfq_df.index <= df.index[-1]].iloc[-1] if len(nfq_df[nfq_df.index <= df.index[-1]]) > 0 else last_qfq_close
+                adj_ratio = last_qfq_close / last_nfq_close if last_nfq_close > 0 else 1.0
+                missing_rows = nfq_df.loc[missing_dates].copy()
+                for col in ["Open", "Close", "High", "Low"]:
+                    missing_rows[col] = missing_rows[col] * adj_ratio
+                df = pd.concat([df, missing_rows]).sort_index()
+                df = df[~df.index.duplicated(keep='last')]
+                print(f"    补充了{len(missing_dates)}天数据，最新={df.index[-1].date()}，调整比例={adj_ratio:.6f}")
+
     return df
 
 
