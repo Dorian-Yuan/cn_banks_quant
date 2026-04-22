@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>波段再平准策略 V1.2.7 · 多银行网格回测系统</title>
+    <title>波段再平准策略 V1.2.8 · 多银行网格回测系统</title>
     <link rel="icon" type="image/png" href="../assets/icon/grid_rebalance_logo.png">
     <link rel="apple-touch-icon" href="../assets/icon/grid_rebalance_logo.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -209,7 +209,7 @@
 <div class="dashboard">
     <div class="sidebar">
         <div class="header">
-            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.7</span></h2>
+            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.8</span></h2>
             <p>多银行网格交易 · 交互式回测系统</p>
         </div>
 
@@ -524,6 +524,90 @@ let chartEquity = null;
 let chartAllocation = null;
 let allBankData = {};
 let lastBacktestResult = null;
+let autoBacktestTimer = null;
+
+const CACHE_KEY = 'backtest_v128_config';
+
+function saveConfig() {
+    try {
+        let cfg = {};
+        let inputs = document.querySelectorAll('input[id^="cfg_"]');
+        inputs.forEach(el => {
+            if (el.type === 'checkbox') {
+                cfg[el.id] = el.checked;
+            } else {
+                cfg[el.id] = el.value;
+            }
+        });
+        let sel = document.getElementById('cfg_limit_check');
+        if (sel) cfg['cfg_limit_check'] = sel.value;
+        let reb = document.querySelector('input[name="cfg_rebalance"]:checked');
+        if (reb) cfg['cfg_rebalance'] = reb.value;
+        let banks = {};
+        document.querySelectorAll('#bankGrid input[type="checkbox"]').forEach(cb => {
+            banks[cb.value] = cb.checked;
+        });
+        cfg['_banks'] = banks;
+        localStorage.setItem(CACHE_KEY, JSON.stringify(cfg));
+    } catch (e) {}
+}
+
+function loadConfig() {
+    try {
+        let raw = localStorage.getItem(CACHE_KEY);
+        if (!raw) return false;
+        let cfg = JSON.parse(raw);
+        let inputs = document.querySelectorAll('input[id^="cfg_"]');
+        inputs.forEach(el => {
+            if (cfg[el.id] !== undefined) {
+                if (el.type === 'checkbox') {
+                    el.checked = cfg[el.id];
+                } else {
+                    el.value = cfg[el.id];
+                }
+            }
+        });
+        if (cfg['cfg_limit_check'] !== undefined) {
+            document.getElementById('cfg_limit_check').value = cfg['cfg_limit_check'];
+        }
+        if (cfg['cfg_rebalance'] !== undefined) {
+            let rb = document.querySelector(`input[name="cfg_rebalance"][value="${cfg['cfg_rebalance']}"]`);
+            if (rb) rb.checked = true;
+        }
+        if (cfg['_banks']) {
+            document.querySelectorAll('#bankGrid input[type="checkbox"]').forEach(cb => {
+                if (cfg['_banks'][cb.value] !== undefined) {
+                    cb.checked = cfg['_banks'][cb.value];
+                    cb.closest('.bank-check').classList.toggle('checked', cb.checked);
+                }
+            });
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function autoSelectBanks(startDate, endDate) {
+    let psbDate = new Date('2019-12-10');
+    let s = new Date(startDate);
+    let e = new Date(endDate);
+    let includePSB = e >= psbDate;
+    document.querySelectorAll('#bankGrid input[type="checkbox"]').forEach(cb => {
+        let isPSB = cb.value === '601658';
+        cb.checked = isPSB ? includePSB : true;
+        cb.closest('.bank-check').classList.toggle('checked', cb.checked);
+    });
+    updateCapitalPreview();
+}
+
+function scheduleAutoBacktest() {
+    if (autoBacktestTimer) clearTimeout(autoBacktestTimer);
+    autoBacktestTimer = setTimeout(() => {
+        let btn = document.getElementById('btnRun');
+        if (!btn.disabled) runBacktest();
+    }, 800);
+}
 
 function getCommissionRate() {
     return (parseFloat(document.getElementById('cfg_commission_rate').value) || 0.854) / 10000;
@@ -588,12 +672,13 @@ function setQuickRange(years) {
     d.setFullYear(d.getFullYear() - years);
     let startDate = d.toISOString().split('T')[0];
     startInput.value = startDate;
+    autoSelectBanks(startDate, endDate);
     updateCapitalPreview();
     updateBankTooltips();
 }
 
 function setRandomRange() {
-    let minStart = new Date('2019-12-10');
+    let minStart = new Date('2015-01-05');
     let maxEnd = new Date();
     let minDurationDays = 60;
     let totalRangeDays = Math.floor((maxEnd - minStart) / 86400000);
@@ -604,10 +689,12 @@ function setRandomRange() {
     let duration = minDurationDays + Math.floor(Math.random() * (remainingDays - minDurationDays + 1));
     let endDate = new Date(startDate.getTime() + duration * 86400000);
     if (endDate > maxEnd) endDate = new Date(maxEnd);
-    document.getElementById('cfg_start').value = startDate.toISOString().split('T')[0];
-    document.getElementById('cfg_end').value = endDate.toISOString().split('T')[0];
+    let startStr = startDate.toISOString().split('T')[0];
+    let endStr = endDate.toISOString().split('T')[0];
+    document.getElementById('cfg_start').value = startStr;
+    document.getElementById('cfg_end').value = endStr;
     document.querySelectorAll('input[name="cfg_quick_range"]').forEach(r => r.checked = false);
-    updateCapitalPreview();
+    autoSelectBanks(startStr, endStr);
     updateBankTooltips();
 }
 
@@ -761,6 +848,7 @@ async function runBacktest() {
         let result = executeBacktest(config);
         lastBacktestResult = result;
         renderResults(result, config);
+        saveConfig();
 
     } catch (e) {
         console.error(e);
@@ -820,7 +908,12 @@ function executeBacktest(config) {
     dates = dates.filter(d => d <= validEnd);
     if (dates.length === 0) return { error: '选定日期范围内无数据' };
 
-    let N = banks.length;
+    let activeBanks = banks.filter(s => {
+        let sDates = Object.keys(merged[s]);
+        return sDates.some(d => d >= start && d <= validEnd);
+    });
+    if (activeBanks.length === 0) return { error: '选定日期范围内无数据' };
+    let N = activeBanks.length;
     let cash = capital;
     let portfolio = {};
     let baseP = {};
@@ -1004,9 +1097,13 @@ function executeBacktest(config) {
                 if (sellShares <= 0) break;
                 if (portfolio[s] < sellShares) break;
 
+                let t1Limited = false;
                 if (tPlus1) {
                     let maxSellable = Math.floor(openPosition[s] / 100) * 100;
-                    if (sellShares > maxSellable) sellShares = maxSellable;
+                    if (sellShares > maxSellable) {
+                        t1Limited = true;
+                        sellShares = maxSellable;
+                    }
                     if (sellShares <= 0) break;
                 }
 
@@ -1029,7 +1126,7 @@ function executeBacktest(config) {
                 totalDivTax += divTax;
                 totalTrades++;
                 bankPerf[s].gridSellCount++;
-                tradeLog.push({ date, stock: s, type: 'grid_sell', price: execPrice, shares: sellShares, amount: proceeds, fees, divTax });
+                tradeLog.push({ date, stock: s, type: t1Limited ? 'grid_sell_t1' : 'grid_sell', price: execPrice, shares: sellShares, amount: proceeds, fees, divTax });
             }
         }
 
@@ -1068,9 +1165,13 @@ function executeBacktest(config) {
                         sellDiff = Math.max(0, (portfolio[a.stock] || 0) - minShares);
                     }
                 }
+                let rebT1Limited = false;
                 if (tPlus1) {
                     let maxSellable = Math.floor(openPosition[a.stock] / 100) * 100;
-                    if (sellDiff > maxSellable) sellDiff = maxSellable;
+                    if (sellDiff > maxSellable) {
+                        rebT1Limited = true;
+                        sellDiff = maxSellable;
+                    }
                 }
                 if (sellDiff <= 0) continue;
                 let proceeds = sellDiff * a.price;
@@ -1081,7 +1182,7 @@ function executeBacktest(config) {
                 totalFees += fees;
                 totalDivTax += divTax;
                 totalTrades++;
-                rebalanceActions.push({ stock: a.stock, type: 'rebalance_sell', shares: sellDiff, price: a.price, fees, divTax });
+                rebalanceActions.push({ stock: a.stock, type: rebT1Limited ? 'rebalance_sell_t1' : 'rebalance_sell', shares: sellDiff, price: a.price, fees, divTax });
             }
             for (let a of rebalanceBuys) {
                 let cost = a.diff * a.price;
@@ -1247,7 +1348,7 @@ function executeBacktest(config) {
     let calmarRatio = (maxDrawdown < 0 && years > 0) ? annualReturn / Math.abs(maxDrawdown * 100) : 0;
 
     let gridBuys = tradeLog.filter(t => t.type === 'grid_buy');
-    let gridSells = tradeLog.filter(t => t.type === 'grid_sell');
+    let gridSells = tradeLog.filter(t => t.type === 'grid_sell' || t.type === 'grid_sell_t1');
     let gridWinCount = 0;
     let gridTotalCount = gridBuys.length;
     for (let sell of gridSells) {
@@ -1621,8 +1722,10 @@ function renderTradeLog(result) {
             case 'init_buy': typeLabel = '初始建仓'; typeClass = 'buy-tag'; break;
             case 'grid_buy': typeLabel = '网格买入'; typeClass = 'buy-tag'; break;
             case 'grid_sell': typeLabel = '网格卖出'; typeClass = 'sell-tag'; break;
+            case 'grid_sell_t1': typeLabel = '网格卖出(T+1)'; typeClass = 'sell-tag'; break;
             case 'rebalance_buy': typeLabel = '平准买入'; typeClass = 'rebalance-tag'; break;
             case 'rebalance_sell': typeLabel = '平准卖出'; typeClass = 'rebalance-tag'; break;
+            case 'rebalance_sell_t1': typeLabel = '平准卖出(T+1)'; typeClass = 'rebalance-tag'; break;
             case 'dividend': typeLabel = '分红到账'; typeClass = 'dividend-tag'; break;
             default: typeLabel = t.type;
         }
@@ -1685,7 +1788,7 @@ function exportTradeLog() {
     if (!lastResult || !lastResult.tradeLog) { alert('请先运行回测'); return; }
     let header = '日期,股票,类型,价格,股数,金额,手续费,红利补税\n';
     let rows = lastResult.tradeLog.map(t =>
-        `${t.date},${BANK_NAMES[t.stock]||t.stock},${t.type==='grid_buy'?'网格买入':t.type==='grid_sell'?'网格卖出':t.type==='init_buy'?'初始建仓':t.type==='rebalance_buy'?'再平衡买入':t.type==='rebalance_sell'?'再平衡卖出':'分红'},${t.price},${t.shares},${t.amount.toFixed(2)},${t.fees.toFixed(2)},${t.divTax.toFixed(2)}`
+        `${t.date},${BANK_NAMES[t.stock]||t.stock},${t.type==='grid_buy'?'网格买入':t.type==='grid_sell'?'网格卖出':t.type==='grid_sell_t1'?'网格卖出(T+1)':t.type==='init_buy'?'初始建仓':t.type==='rebalance_buy'?'再平衡买入':t.type==='rebalance_sell'?'再平衡卖出':t.type==='rebalance_sell_t1'?'再平衡卖出(T+1)':'分红'},${t.price},${t.shares},${t.amount.toFixed(2)},${t.fees.toFixed(2)},${t.divTax.toFixed(2)}`
     ).join('\n');
     let blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8' });
     let a = document.createElement('a');
@@ -1711,35 +1814,56 @@ function exportEquityCurve() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+    let hasCache = loadConfig();
+
     let banks = getSelectedBanks();
     await Promise.all(banks.map(s => loadBankData(s)));
     await loadBankData('399986');
-    updateCapitalPreview();
 
-    let minDate = null, maxDate = null;
-    for (let s of banks) {
-        let data = allBankData[s];
-        if (data && data.length > 0) {
-            let first = normalizeDate(data[0].Date);
-            let last = normalizeDate(data[data.length - 1].Date);
-            if (!minDate || first < minDate) minDate = first;
-            if (!maxDate || last > maxDate) maxDate = last;
-        }
-    }
-    if (minDate) document.getElementById('cfg_start').min = minDate;
-    if (maxDate) {
-        let validMax = maxDate;
+    if (!hasCache) {
+        let minDate = null, maxDate = null;
         for (let s of banks) {
             let data = allBankData[s];
-            if (!data || data.length === 0) continue;
-            let last = normalizeDate(data[data.length - 1].Date);
-            if (last < validMax) validMax = last;
+            if (data && data.length > 0) {
+                let first = normalizeDate(data[0].Date);
+                let last = normalizeDate(data[data.length - 1].Date);
+                if (!minDate || first < minDate) minDate = first;
+                if (!maxDate || last > maxDate) maxDate = last;
+            }
         }
-        document.getElementById('cfg_end').value = validMax;
-        document.getElementById('cfg_end').max = validMax;
+        if (minDate) document.getElementById('cfg_start').min = minDate;
+        if (maxDate) {
+            let validMax = maxDate;
+            for (let s of banks) {
+                let data = allBankData[s];
+                if (!data || data.length === 0) continue;
+                let last = normalizeDate(data[data.length - 1].Date);
+                if (last < validMax) validMax = last;
+            }
+            document.getElementById('cfg_end').value = validMax;
+            document.getElementById('cfg_end').max = validMax;
+        }
+    } else {
+        let allBanks = ['601398','601288','601988','601939','601328','601658'];
+        for (let s of allBanks) {
+            if (!allBankData[s]) await loadBankData(s);
+        }
     }
 
+    updateCapitalPreview();
     updateBankTooltips();
+
+    document.querySelectorAll('input[id^="cfg_"]').forEach(el => {
+        el.addEventListener('change', scheduleAutoBacktest);
+    });
+    document.getElementById('cfg_limit_check').addEventListener('change', scheduleAutoBacktest);
+    document.querySelectorAll('input[name="cfg_rebalance"]').forEach(el => {
+        el.addEventListener('change', scheduleAutoBacktest);
+    });
+    document.querySelectorAll('#bankGrid input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', scheduleAutoBacktest);
+    });
+
     runBacktest();
 });
 </script>
