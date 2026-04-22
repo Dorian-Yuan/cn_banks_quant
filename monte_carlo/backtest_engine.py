@@ -285,7 +285,7 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
                     lot['div_received'] += div_cash * lot['shares']
 
         if config.enable_grid:
-            open_position = {s: portfolio[s] or 0 for s in banks}
+            open_position = {s: (0 if idx == 0 else (portfolio[s] or 0)) for s in banks}
             for s in banks:
                 open_p = fast[s]['open'][idx]
                 high = fast[s]['high'][idx]

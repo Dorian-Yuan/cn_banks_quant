@@ -935,7 +935,7 @@ function executeBacktest(config) {
         let nextDate = i + 1 < dates.length ? dates[i + 1] : null;
 
         let openPosition = {};
-        for (let s of banks) openPosition[s] = portfolio[s] || 0;
+        for (let s of banks) openPosition[s] = i === 0 ? 0 : (portfolio[s] || 0);
 
         for (let s of banks) {
             let row = merged[s][date];
