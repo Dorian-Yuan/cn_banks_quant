@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>波段再平准策略 V1.2.9 · 多银行网格回测系统</title>
+    <title>波段再平准策略 V1.2.10 · 多银行网格回测系统</title>
     <link rel="icon" type="image/png" href="../assets/icon/grid_rebalance_logo.png">
     <link rel="apple-touch-icon" href="../assets/icon/grid_rebalance_logo.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -209,7 +209,7 @@
 <div class="dashboard">
     <div class="sidebar">
         <div class="header">
-            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.9</span></h2>
+            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.10</span></h2>
             <p>多银行网格交易 · 交互式回测系统</p>
         </div>
 
@@ -469,6 +469,10 @@
             <div id="chartBankPerf" class="chart"></div>
         </div>
 
+        <div class="chart-container">
+            <div id="chartHeatmap" class="chart" style="height:200px;"></div>
+        </div>
+
         <div class="trade-log-section">
             <div class="trade-log-header" onclick="toggleTradeLog()">
                 <h3>📋 交易日志</h3>
@@ -519,14 +523,17 @@ const BANK_COLORS = {
 };
 
 const STAMP_DUTY_RATE = 0.0005;
+const TRANSFER_FEE_RATE = 0.00001;
+const PSBC_START = '2019-12-10';
 
 let chartEquity = null;
 let chartAllocation = null;
+let chartHeatmap = null;
 let allBankData = {};
 let lastBacktestResult = null;
 let autoBacktestTimer = null;
 
-const CACHE_KEY = 'backtest_v128_config';
+const CACHE_KEY = 'backtest_v1210_config';
 
 function saveConfig() {
     try {
@@ -630,7 +637,8 @@ function calcFees(amount, isSell) {
         comm = Math.max(5, rawComm);
     }
     let stamp = isSell ? amount * STAMP_DUTY_RATE : 0;
-    return comm + stamp;
+    let transfer = amount * TRANSFER_FEE_RATE;
+    return comm + stamp + transfer;
 }
 
 function getClosestShares(targetAmount, price) {
@@ -913,7 +921,12 @@ function executeBacktest(config) {
         return sDates.some(d => d >= start && d <= validEnd);
     });
     if (activeBanks.length === 0) return { error: '选定日期范围内无数据' };
-    let N = activeBanks.length;
+
+    let firstDateBanks = banks.filter(s => {
+        let row = merged[s][dates[0]];
+        return row && row.Close && row.Close > 0;
+    });
+    let N = firstDateBanks.length;
     let cash = capital;
     let portfolio = {};
     let baseP = {};
@@ -942,7 +955,7 @@ function executeBacktest(config) {
     for (let s of banks) {
         lots[s] = [];
         let row = merged[s][firstDate];
-        if (!row || !row.Close) {
+        if (!row || !row.Close || row.Close <= 0 || !firstDateBanks.includes(s)) {
             initPlan.push({ stock: s, shares: 0, price: 0, cost: 0, fees: 0 });
             continue;
         }
@@ -983,6 +996,9 @@ function executeBacktest(config) {
     for (let s of banks) {
         initShares[s] = portfolio[s] || 0;
     }
+
+    let currentBanks = [...firstDateBanks];
+    let psbcAdded = currentBanks.includes('601658');
 
     function parseLocalDate(str) {
         let [y, m, d] = String(str).split('-').map(Number);
@@ -1027,11 +1043,24 @@ function executeBacktest(config) {
         let date = dates[i];
         let nextDate = i + 1 < dates.length ? dates[i + 1] : null;
 
+        if (!psbcAdded && date >= PSBC_START) {
+            let psbcRow = merged['601658'] ? merged['601658'][date] : null;
+            if (psbcRow && psbcRow.Close && psbcRow.Close > 0) {
+                currentBanks.push('601658');
+                portfolio['601658'] = 0;
+                baseP['601658'] = roundPrice(psbcRow.Close);
+                lots['601658'] = [];
+                initShares['601658'] = 0;
+                N = currentBanks.length;
+                psbcAdded = true;
+            }
+        }
+
         let openPosition = {};
-        for (let s of banks) openPosition[s] = i === 0 ? 0 : (portfolio[s] || 0);
+        for (let s of currentBanks) openPosition[s] = i === 0 ? 0 : (portfolio[s] || 0);
 
         if (i > 0) {
-        for (let s of banks) {
+        for (let s of currentBanks) {
             let row = merged[s][date];
             if (!row) continue;
 
@@ -1049,7 +1078,7 @@ function executeBacktest(config) {
             }
         }
 
-        for (let s of banks) {
+        for (let s of currentBanks) {
             let row = merged[s][date];
             if (!row || !portfolio[s] || portfolio[s] <= 0) continue;
 
@@ -1135,7 +1164,7 @@ function executeBacktest(config) {
         if (isPeriodEnd(date, nextDate, rebalancePeriod)) {
             let totalValue = cash;
             let stockPrices = {};
-            for (let s of banks) {
+            for (let s of currentBanks) {
                 let row = merged[s][date];
                 let p = row ? roundPrice(row.Close) : 0;
                 stockPrices[s] = p;
@@ -1147,7 +1176,7 @@ function executeBacktest(config) {
 
             let rebalanceSells = [];
             let rebalanceBuys = [];
-            for (let s of banks) {
+            for (let s of currentBanks) {
                 let price = stockPrices[s];
                 if (!price || price <= 0) continue;
                 let targetShares = getClosestShares(targetPerStock, price);
@@ -1214,7 +1243,7 @@ function executeBacktest(config) {
 
         let dayValue = cash;
         let dayAlloc = {};
-        for (let s of banks) {
+        for (let s of currentBanks) {
             let row = merged[s][date];
             let p = row ? row.Close : 0;
             let val = (portfolio[s] || 0) * p;
@@ -1226,7 +1255,7 @@ function executeBacktest(config) {
         cashRatioHistory.push({ date, ratio: dayValue > 0 ? cash / dayValue : 0 });
     }
 
-    for (let s of banks) {
+    for (let s of currentBanks) {
         let lastRow = merged[s][dates[dates.length - 1]];
         bankPerf[s].finalValue = (portfolio[s] || 0) * (lastRow ? lastRow.Close : 0);
     }
@@ -1254,7 +1283,7 @@ function executeBacktest(config) {
     let bhInitCost = 0;
     for (let s of banks) {
         let firstRow = merged[s][dates[0]];
-        if (!firstRow || !firstRow.Close) { bhShares[s] = 0; bhLots[s] = []; continue; }
+        if (!firstRow || !firstRow.Close || firstRow.Close <= 0 || !firstDateBanks.includes(s)) { bhShares[s] = 0; bhLots[s] = []; continue; }
         let sh = getClosestShares(bhInitPerStock, firstRow.Close);
         bhShares[s] = sh;
         bhLots[s] = [{ date: dates[0], shares: sh, divReceived: 0 }];
@@ -1431,6 +1460,7 @@ function renderResults(result, config) {
     renderAllocationChart(result, config);
     renderCashRatioChart(result, config);
     renderBankPerfChart(result, config);
+    renderHeatmapChart(result);
     renderTradeLog(result);
 }
 
@@ -1708,6 +1738,134 @@ function renderBankPerfChart(result, config) {
         ]
     };
     chartBankPerf.setOption(option, true);
+}
+
+function renderHeatmapChart(result) {
+    if (!chartHeatmap) {
+        chartHeatmap = echarts.init(document.getElementById('chartHeatmap'), 'dark');
+    }
+    let curve = result.equityCurve;
+    if (!curve || curve.length < 2) {
+        chartHeatmap.setOption({ title: { text: '日收益热力图', left: 'center', textStyle: { color: '#94a3b8' } } }, true);
+        return;
+    }
+
+    let dailyReturns = [];
+    for (let i = 1; i < curve.length; i++) {
+        let prev = curve[i - 1].value;
+        if (prev <= 0) continue;
+        let ret = (curve[i].value - prev) / prev;
+        dailyReturns.push({ date: curve[i].date, ret: ret });
+    }
+    if (dailyReturns.length === 0) return;
+
+    let dayNames = ['周一', '周二', '周三', '周四', '周五'];
+
+    let firstDate = new Date(dailyReturns[0].date + 'T00:00:00');
+    let firstDow = firstDate.getDay();
+    if (firstDow === 0) firstDow = 7;
+    let firstWeekOffset = firstDow - 1;
+
+    let heatmapData = [];
+    let weekLabels = [];
+    let curWeek = 0;
+    let weekStartDates = [];
+
+    for (let i = 0; i < dailyReturns.length; i++) {
+        let d = new Date(dailyReturns[i].date + 'T00:00:00');
+        let dow = d.getDay();
+        if (dow === 0) dow = 7;
+        let dayIdx = dow - 1;
+
+        if (i === 0) {
+            curWeek = 0;
+        } else {
+            let prevD = new Date(dailyReturns[i - 1].date + 'T00:00:00');
+            let prevDow = prevD.getDay();
+            if (prevDow === 0) prevDow = 7;
+            if (dow <= prevDow || (prevDow === 5 && (dow === 1 || dow === 2 || dow === 3 || dow === 4))) {
+                curWeek++;
+            }
+        }
+
+        if (weekStartDates.length <= curWeek) {
+            weekStartDates.push(dailyReturns[i].date);
+        }
+        heatmapData.push([curWeek, dayIdx, dailyReturns[i].ret, dailyReturns[i].date]);
+    }
+
+    let totalWeeks = curWeek + 1;
+    let weekLabelData = [];
+    for (let w = 0; w < totalWeeks; w++) {
+        if (w % 4 === 0 && weekStartDates[w]) {
+            let parts = weekStartDates[w].split('-');
+            weekLabelData.push({ value: w, label: parts[1] + '/' + parts[2] });
+        } else {
+            weekLabelData.push({ value: w, label: '' });
+        }
+    }
+
+    let option = {
+        backgroundColor: 'transparent',
+        title: {
+            text: '日收益热力图',
+            left: 'left', top: 0,
+            textStyle: { color: '#e2e8f0', fontSize: 15 }
+        },
+        tooltip: {
+            formatter: function(params) {
+                if (!params.data) return '';
+                let ret = params.data[2];
+                let date = params.data[3];
+                let color = ret >= 0 ? '#ef4444' : '#22c55e';
+                return `<div style="font-size:12px;color:#e2e8f0">${date} ${dayNames[params.data[1]]}<br/>收益率: <span style="color:${color};font-weight:bold">${(ret * 100).toFixed(2)}%</span></div>`;
+            },
+            backgroundColor: 'rgba(30, 41, 59, 0.95)',
+            borderColor: '#475569'
+        },
+        grid: { left: 50, right: 20, bottom: 25, top: 35, containLabel: false },
+        xAxis: {
+            type: 'category',
+            data: weekLabelData.map(w => w.label),
+            axisLabel: { color: '#64748b', fontSize: 10, interval: 0 },
+            axisLine: { lineStyle: { color: '#1e293b' } },
+            axisTick: { show: false },
+            splitLine: { show: false }
+        },
+        yAxis: {
+            type: 'category',
+            data: dayNames,
+            axisLabel: { color: '#94a3b8', fontSize: 11 },
+            axisLine: { lineStyle: { color: '#1e293b' } },
+            axisTick: { show: false },
+            splitLine: { show: false }
+        },
+        visualMap: {
+            min: -0.03,
+            max: 0.03,
+            calculable: false,
+            orient: 'horizontal',
+            left: 'center',
+            bottom: 0,
+            itemWidth: 12,
+            itemHeight: 100,
+            textStyle: { color: '#94a3b8', fontSize: 10 },
+            inRange: {
+                color: ['#166534', '#22c55e', '#4ade80', '#1e293b', '#fca5a5', '#ef4444', '#991b1b']
+            },
+            text: ['+3%', '-3%'],
+            show: true
+        },
+        series: [{
+            type: 'heatmap',
+            data: heatmapData,
+            itemStyle: { borderColor: '#0f172a', borderWidth: 1, borderRadius: 2 },
+            emphasis: {
+                itemStyle: { borderColor: '#e2e8f0', borderWidth: 1 }
+            }
+        }]
+    };
+    chartHeatmap.setOption(option, true);
 }
 
 function renderTradeLog(result) {

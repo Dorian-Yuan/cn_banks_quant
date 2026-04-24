@@ -22,6 +22,7 @@ class BacktestConfig:
     commission_min: float = 0.5
     exempt_five: bool = True
     stamp_duty_rate: float = 0.0005
+    transfer_fee_rate: float = 0.00001
     slippage: float = 0
     limit_check: bool = True
     enable_rebalance: bool = True
@@ -82,7 +83,8 @@ def calc_fees(amount, is_sell, config):
     else:
         comm = max(5.0, raw_comm)
     stamp = amount * config.stamp_duty_rate if is_sell else 0
-    return comm + stamp
+    transfer = amount * config.transfer_fee_rate
+    return comm + stamp + transfer
 
 
 _date_cache = {}
@@ -174,7 +176,8 @@ def _merged_to_fast(merged, dates, banks):
 
 
 def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
-    banks = config.banks
+    from .config import PSBC_START
+    banks = list(config.banks)
     start = config.start_date
     end = config.end_date
 
@@ -199,7 +202,6 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
     fast, date_strs = _merged_to_fast(merged, dates, banks)
     n_days = len(dates)
 
-    N = len(banks)
     capital = config.capital
     cash = capital
     portfolio = {s: 0 for s in banks}
@@ -215,13 +217,15 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
     grid_sell_count = 0
     rebalance_count = 0
 
+    active_banks = [s for s in banks if fast[s]['close'][0] > 0]
+    N = len(active_banks)
     per_stock = capital / N
     init_plan = []
     init_total_cost = 0.0
 
     for s in banks:
         price = round_price(fast[s]['close'][0])
-        if price <= 0:
+        if price <= 0 or s not in active_banks:
             init_plan.append({'stock': s, 'shares': 0, 'price': 0, 'cost': 0, 'fees': 0})
             continue
         shares = get_closest_shares(per_stock, price)
@@ -239,7 +243,7 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
         s = plan['stock']
         if plan['shares'] <= 0:
             portfolio[s] = 0
-            base_p[s] = round_price(fast[s]['close'][0])
+            base_p[s] = round_price(fast[s]['close'][0]) if fast[s]['close'][0] > 0 else 0
             continue
         portfolio[s] = plan['shares']
         cash -= (plan['cost'] + plan['fees'])
@@ -249,13 +253,28 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
         lots[s].append({'date_ordinal': first_date_ordinal, 'shares': plan['shares'], 'div_received': 0.0})
         init_shares[s] = plan['shares']
 
+    current_banks = list(active_banks)
+    psbc_added = '601658' in current_banks
+    psbc_ordinal = _date_ordinal(PSBC_START)
+
     equity_curve = []
 
     for idx in range(n_days):
         date_str = date_strs[idx]
         next_date_str = date_strs[idx + 1] if idx + 1 < n_days else None
+        current_ordinal = _date_ordinal(date_str)
 
-        for s in banks:
+        if not psbc_added and current_ordinal >= psbc_ordinal:
+            if '601658' in fast and fast['601658']['close'][idx] > 0:
+                current_banks.append('601658')
+                portfolio['601658'] = 0
+                base_p['601658'] = round_price(fast['601658']['close'][idx])
+                lots['601658'] = []
+                init_shares['601658'] = 0
+                N = len(current_banks)
+                psbc_added = True
+
+        for s in current_banks:
             div_cash = fast[s]['div'][idx]
             if div_cash > 0 and portfolio[s] > 0:
                 income = portfolio[s] * div_cash
@@ -284,10 +303,10 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
                 for lot in lots[s]:
                     lot['div_received'] += div_cash * lot['shares']
 
-        open_position = {s: (0 if idx == 0 else (portfolio[s] or 0)) for s in banks}
+        open_position = {s: (0 if idx == 0 else (portfolio[s] or 0)) for s in current_banks}
 
         if config.enable_grid and idx > 0:
-            for s in banks:
+            for s in current_banks:
                 open_p = fast[s]['open'][idx]
                 high = fast[s]['high'][idx]
                 low = fast[s]['low'][idx]
@@ -365,7 +384,7 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
             if is_period_end(date_str, next_date_str, config.rebalance_period):
                 total_value = cash
                 stock_prices = {}
-                for s in banks:
+                for s in current_banks:
                     p = round_price(fast[s]['close'][idx])
                     stock_prices[s] = p
                     total_value += (portfolio[s] or 0) * p
@@ -374,7 +393,7 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
                 rebalance_sells = []
                 rebalance_buys = []
 
-                for s in banks:
+                for s in current_banks:
                     price = stock_prices[s]
                     if not price or price <= 0:
                         continue
@@ -423,7 +442,7 @@ def run_backtest(config, preloaded_merged=None, preloaded_dates=None):
                 rebalance_count += 1
 
         day_value = cash
-        for s in banks:
+        for s in current_banks:
             day_value += (portfolio[s] or 0) * fast[s]['close'][idx]
         equity_curve.append(day_value)
 
