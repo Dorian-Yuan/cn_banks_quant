@@ -529,12 +529,14 @@ def run_buy_hold(config, preloaded_merged=None, preloaded_dates=None):
     cash = capital
     portfolio = {s: 0 for s in banks}
 
+    active_banks = [s for s in banks if fast[s]['close'][0] > 0]
+    N = len(active_banks)
     per_stock = capital / N
     init_total_cost = 0.0
 
     for s in banks:
         price = round_price(fast[s]['close'][0])
-        if price <= 0:
+        if price <= 0 or s not in active_banks:
             continue
         shares = get_closest_shares(per_stock, price)
         cost = shares * price
@@ -631,6 +633,7 @@ def run_single_stock_grid(stock, config, preloaded_merged=None, preloaded_dates=
         commission_min=config.commission_min,
         exempt_five=config.exempt_five,
         stamp_duty_rate=config.stamp_duty_rate,
+        transfer_fee_rate=config.transfer_fee_rate,
         slippage=config.slippage,
         limit_check=config.limit_check,
         enable_rebalance=False,
