@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>波段再平准策略 V1.2.11 · 多银行网格回测系统</title>
+    <title>波段再平准策略 V1.2.12 · 多银行网格回测系统</title>
     <link rel="icon" type="image/png" href="../assets/icon/grid_rebalance_logo.png">
     <link rel="apple-touch-icon" href="../assets/icon/grid_rebalance_logo.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -195,37 +195,6 @@
             border-top-color: var(--primary); border-radius: 50%;
             animation: spin 0.8s linear infinite;
         }
-        .heatmap-title { font-size: 15px; font-weight: 600; color: #e2e8f0; margin-bottom: 10px; }
-        .heatmap-body { display: flex; align-items: flex-start; gap: 6px; }
-        .heatmap-scroll { overflow-x: auto; overflow-y: hidden; flex: 1; }
-        .heatmap-scroll::-webkit-scrollbar { height: 4px; }
-        .heatmap-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
-        .heatmap-grid { display: inline-flex; flex-direction: row-reverse; gap: 2px; }
-        .heatmap-column { display: flex; flex-direction: column; gap: 2px; }
-        .heatmap-cell { width: 11px; height: 11px; border-radius: 2px; cursor: pointer; transition: outline 0.1s; }
-        .heatmap-cell:hover { outline: 2px solid #e2e8f0; outline-offset: -1px; }
-        .heatmap-cell.hc-n5 { background: #166534; }
-        .heatmap-cell.hc-n4 { background: #22c55e; }
-        .heatmap-cell.hc-n3 { background: #4ade80; }
-        .heatmap-cell.hc-n2 { background: #86efac; }
-        .heatmap-cell.hc-n1 { background: #bbf7d0; }
-        .heatmap-cell.hc-0  { background: #161b22; }
-        .heatmap-cell.hc-p1 { background: #fecaca; }
-        .heatmap-cell.hc-p2 { background: #fca5a5; }
-        .heatmap-cell.hc-p3 { background: #ef4444; }
-        .heatmap-cell.hc-p4 { background: #dc2626; }
-        .heatmap-cell.hc-p5 { background: #991b1b; }
-        .heatmap-month-row { display: inline-flex; flex-direction: row-reverse; gap: 2px; margin-top: 4px; }
-        .heatmap-month-label { font-size: 10px; color: #64748b; text-align: left; white-space: nowrap; }
-        .heatmap-legend { display: flex; align-items: center; gap: 3px; margin-top: 8px; font-size: 11px; color: #64748b; }
-        .heatmap-legend-cell { width: 11px; height: 11px; border-radius: 2px; }
-        .heatmap-tooltip {
-            position: fixed; background: rgba(15,23,42,0.95); border: 1px solid #475569;
-            border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #e2e8f0;
-            pointer-events: none; z-index: 9999; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-            opacity: 0; transition: opacity 0.15s;
-        }
-        .heatmap-tooltip.visible { opacity: 1; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .loading-text { color: var(--text-main); font-size: 14px; font-weight: 500; }
     </style>
@@ -240,7 +209,7 @@
 <div class="dashboard">
     <div class="sidebar">
         <div class="header">
-            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.11</span></h2>
+            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.2.12</span></h2>
             <p>多银行网格交易 · 交互式回测系统</p>
         </div>
 
@@ -500,8 +469,12 @@
             <div id="chartBankPerf" class="chart"></div>
         </div>
 
-        <div class="chart-container" style="min-height:auto;padding:16px;">
-            <div id="chartHeatmap"></div>
+        <div class="chart-container">
+            <div id="chartDrawdown" class="chart"></div>
+        </div>
+
+        <div class="chart-container">
+            <div id="chartMonthlyReturn" class="chart"></div>
         </div>
 
         <div class="trade-log-section">
@@ -559,11 +532,13 @@ const PSBC_START = '2019-12-10';
 
 let chartEquity = null;
 let chartAllocation = null;
+let chartDrawdown = null;
+let chartMonthlyReturn = null;
 let allBankData = {};
 let lastBacktestResult = null;
 let autoBacktestTimer = null;
 
-const CACHE_KEY = 'backtest_v1211_config';
+const CACHE_KEY = 'backtest_v1212_config';
 
 function saveConfig() {
     try {
@@ -1490,7 +1465,8 @@ function renderResults(result, config) {
     renderAllocationChart(result, config);
     renderCashRatioChart(result, config);
     renderBankPerfChart(result, config);
-    renderHeatmapChart(result);
+    renderDrawdownChart(result);
+    renderMonthlyReturnChart(result);
     renderTradeLog(result);
 }
 
@@ -1770,140 +1746,169 @@ function renderBankPerfChart(result, config) {
     chartBankPerf.setOption(option, true);
 }
 
-let heatmapTooltip = null;
-function renderHeatmapChart(result) {
-    let container = document.getElementById('chartHeatmap');
-    container.innerHTML = '';
-
-    if (!heatmapTooltip) {
-        heatmapTooltip = document.createElement('div');
-        heatmapTooltip.className = 'heatmap-tooltip';
-        document.body.appendChild(heatmapTooltip);
+function renderDrawdownChart(result) {
+    if (!chartDrawdown) {
+        chartDrawdown = echarts.init(document.getElementById('chartDrawdown'), 'dark');
     }
 
     let curve = result.equityCurve;
+    let bhCurve = result.bhCurve;
     if (!curve || curve.length < 2) {
-        container.innerHTML = '<div class="heatmap-title">日收益热力图</div><div style="color:#64748b;font-size:13px;">暂无数据</div>';
+        chartDrawdown.setOption({ title: { text: '回撤曲线', left: 'center', textStyle: { color: '#94a3b8' } } }, true);
         return;
     }
 
-    let dailyReturns = [];
-    for (let i = 1; i < curve.length; i++) {
-        let prev = curve[i - 1].value;
-        if (prev <= 0) continue;
-        let ret = (curve[i].value - prev) / prev;
-        dailyReturns.push({ date: curve[i].date, ret: ret });
+    let dates = [];
+    let strategyDD = [];
+    let bhDD = [];
+    let peak = curve[0].value;
+    let bhPeak = bhCurve ? bhCurve[0].value : 0;
+
+    for (let i = 0; i < curve.length; i++) {
+        dates.push(curve[i].date);
+        if (curve[i].value > peak) peak = curve[i].value;
+        strategyDD.push(+(((curve[i].value - peak) / peak * 100).toFixed(2)));
+        if (bhCurve && bhCurve[i]) {
+            if (bhCurve[i].value > bhPeak) bhPeak = bhCurve[i].value;
+            bhDD.push(+(((bhCurve[i].value - bhPeak) / bhPeak * 100).toFixed(2)));
+        }
     }
-    if (dailyReturns.length === 0) {
-        container.innerHTML = '<div class="heatmap-title">日收益热力图</div><div style="color:#64748b;font-size:13px;">暂无收益数据</div>';
+
+    let option = {
+        backgroundColor: 'transparent',
+        title: { text: '回撤曲线', left: 'left', top: 0, textStyle: { color: '#e2e8f0', fontSize: 15 } },
+        tooltip: {
+            trigger: 'axis',
+            formatter: function(params) {
+                let date = params[0].axisValue;
+                let s = '<div style="font-size:12px;color:#e2e8f0">' + date + '</div>';
+                for (let p of params) {
+                    let color = p.value < 0 ? '#ef4444' : '#22c55e';
+                    s += '<div style="font-size:12px;color:' + color + '">' + p.seriesName + ': ' + p.value.toFixed(2) + '%</div>';
+                }
+                return s;
+            },
+            backgroundColor: 'rgba(30, 41, 59, 0.95)', borderColor: '#475569'
+        },
+        legend: { data: ['策略回撤', '买入持有回撤'], top: 0, right: 10, textStyle: { color: '#94a3b8', fontSize: 11 } },
+        grid: { left: 60, right: 20, bottom: 30, top: 40 },
+        xAxis: { type: 'category', data: dates, axisLabel: { color: '#64748b', fontSize: 10 }, axisLine: { lineStyle: { color: '#1e293b' } }, axisTick: { show: false }, splitLine: { show: false } },
+        yAxis: { type: 'value', axisLabel: { color: '#94a3b8', fontSize: 11, formatter: '{value}%' }, axisLine: { lineStyle: { color: '#1e293b' } }, axisTick: { show: false }, splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } } },
+        series: [
+            {
+                name: '策略回撤', type: 'line', data: strategyDD,
+                lineStyle: { color: '#ef4444', width: 1.5 },
+                itemStyle: { color: '#ef4444' },
+                areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(239,68,68,0.25)' }, { offset: 1, color: 'rgba(239,68,68,0.02)' }]) },
+                showSymbol: false, smooth: false
+            },
+            {
+                name: '买入持有回撤', type: 'line', data: bhDD,
+                lineStyle: { color: '#64748b', width: 1, type: 'dashed' },
+                itemStyle: { color: '#64748b' },
+                showSymbol: false, smooth: false
+            }
+        ]
+    };
+    chartDrawdown.setOption(option, true);
+}
+
+function renderMonthlyReturnChart(result) {
+    if (!chartMonthlyReturn) {
+        chartMonthlyReturn = echarts.init(document.getElementById('chartMonthlyReturn'), 'dark');
+    }
+
+    let curve = result.equityCurve;
+    let bhCurve = result.bhCurve;
+    if (!curve || curve.length < 2) {
+        chartMonthlyReturn.setOption({ title: { text: '月度收益率', left: 'center', textStyle: { color: '#94a3b8' } } }, true);
         return;
     }
 
-    let title = document.createElement('div');
-    title.className = 'heatmap-title';
-    title.textContent = '日收益热力图';
-    container.appendChild(title);
+    let monthlyData = {};
+    let bhMonthlyData = {};
 
-    let body = document.createElement('div');
-    body.className = 'heatmap-body';
-
-    let scroll = document.createElement('div');
-    scroll.className = 'heatmap-scroll';
-
-    let grid = document.createElement('div');
-    grid.className = 'heatmap-grid';
-
-    let monthRow = document.createElement('div');
-    monthRow.className = 'heatmap-month-row';
-
-    let DAYS_PER_COL = 10;
-    let columns = [];
-    let currentColumn = [];
-
-    for (let i = 0; i < dailyReturns.length; i++) {
-        currentColumn.push(dailyReturns[i]);
-        if (currentColumn.length === DAYS_PER_COL || i === dailyReturns.length - 1) {
-            columns.push(currentColumn);
-            currentColumn = [];
+    for (let i = 0; i < curve.length; i++) {
+        let ym = curve[i].date.substring(0, 7);
+        monthlyData[ym] = { lastVal: curve[i].value, firstVal: monthlyData[ym] ? monthlyData[ym].firstVal : curve[i].value };
+        if (bhCurve && bhCurve[i]) {
+            bhMonthlyData[ym] = { lastVal: bhCurve[i].value, firstVal: bhMonthlyData[ym] ? bhMonthlyData[ym].firstVal : bhCurve[i].value };
         }
     }
 
-    let lastMonth = -1;
+    let months = Object.keys(monthlyData).sort();
+    let strategyReturns = [];
+    let bhReturns = [];
 
-    for (let colIdx = 0; colIdx < columns.length; colIdx++) {
-        let col = columns[colIdx];
-        let colEl = document.createElement('div');
-        colEl.className = 'heatmap-column';
-
-        for (let item of col) {
-            let cell = document.createElement('div');
-            cell.className = 'heatmap-cell';
-
-            let r = item.ret;
-            let colorClass = 'hc-0';
-            if (r < -0.02) colorClass = 'hc-n5';
-            else if (r < -0.01) colorClass = 'hc-n4';
-            else if (r < -0.005) colorClass = 'hc-n3';
-            else if (r < -0.001) colorClass = 'hc-n2';
-            else if (r < 0) colorClass = 'hc-n1';
-            else if (r > 0.02) colorClass = 'hc-p5';
-            else if (r > 0.01) colorClass = 'hc-p4';
-            else if (r > 0.005) colorClass = 'hc-p3';
-            else if (r > 0.001) colorClass = 'hc-p2';
-            else if (r > 0) colorClass = 'hc-p1';
-
-            cell.classList.add(colorClass);
-
-            let dateStr = item.date;
-            let retPct = (r * 100).toFixed(2);
-            let sign = r >= 0 ? '+' : '';
-            cell.dataset.info = dateStr + '  ' + sign + retPct + '%';
-
-            cell.addEventListener('mouseenter', function(e) {
-                heatmapTooltip.textContent = this.dataset.info;
-                heatmapTooltip.classList.add('visible');
-                let rect = this.getBoundingClientRect();
-                heatmapTooltip.style.left = (rect.left + rect.width / 2 - heatmapTooltip.offsetWidth / 2) + 'px';
-                heatmapTooltip.style.top = (rect.top - heatmapTooltip.offsetHeight - 8) + 'px';
-            });
-            cell.addEventListener('mouseleave', function() {
-                heatmapTooltip.classList.remove('visible');
-            });
-
-            colEl.appendChild(cell);
+    for (let k = 0; k < months.length; k++) {
+        let m = months[k];
+        let d = monthlyData[m];
+        if (k === 0) {
+            strategyReturns.push(0);
+            bhReturns.push(0);
+        } else {
+            let prev = monthlyData[months[k - 1]];
+            if (prev && prev.lastVal > 0) {
+                strategyReturns.push(+(((d.lastVal - prev.lastVal) / prev.lastVal * 100).toFixed(2)));
+            } else {
+                strategyReturns.push(0);
+            }
+            if (bhMonthlyData[m] && bhMonthlyData[months[k - 1]]) {
+                let bhPrev = bhMonthlyData[months[k - 1]];
+                if (bhPrev.lastVal > 0) {
+                    bhReturns.push(+(((bhMonthlyData[m].lastVal - bhPrev.lastVal) / bhPrev.lastVal * 100).toFixed(2)));
+                } else {
+                    bhReturns.push(0);
+                }
+            } else {
+                bhReturns.push(0);
+            }
         }
-
-        grid.appendChild(colEl);
-
-        let firstDateInCol = col[0].date;
-        let month = parseInt(firstDateInCol.split('-')[1]);
-        let labelEl = document.createElement('div');
-        labelEl.className = 'heatmap-month-label';
-        if (month !== lastMonth) {
-            labelEl.textContent = month + '月';
-            lastMonth = month;
-        }
-        monthRow.appendChild(labelEl);
     }
 
-    scroll.appendChild(grid);
-    body.appendChild(scroll);
-    container.appendChild(body);
-    container.appendChild(monthRow);
-
-    let legend = document.createElement('div');
-    legend.className = 'heatmap-legend';
-    legend.innerHTML = '<span>跌</span>';
-    let legendColors = ['hc-n5','hc-n4','hc-n3','hc-n2','hc-n1','hc-0','hc-p1','hc-p2','hc-p3','hc-p4','hc-p5'];
-    for (let cls of legendColors) {
-        let lc = document.createElement('div');
-        lc.className = 'heatmap-legend-cell ' + cls;
-        legend.appendChild(lc);
-    }
-    legend.innerHTML += '<span>涨</span>';
-    container.appendChild(legend);
-
-    scroll.scrollLeft = scroll.scrollWidth;
+    let option = {
+        backgroundColor: 'transparent',
+        title: { text: '月度收益率', left: 'left', top: 0, textStyle: { color: '#e2e8f0', fontSize: 15 } },
+        tooltip: {
+            trigger: 'axis',
+            formatter: function(params) {
+                let month = params[0].axisValue;
+                let s = '<div style="font-size:12px;color:#e2e8f0">' + month + '</div>';
+                for (let p of params) {
+                    if (p.seriesType === 'bar') {
+                        let color = p.value >= 0 ? '#22c55e' : '#ef4444';
+                        s += '<div style="font-size:12px;color:' + color + '">' + p.seriesName + ': ' + (p.value >= 0 ? '+' : '') + p.value.toFixed(2) + '%</div>';
+                    } else if (p.seriesType === 'line') {
+                        let color = p.value >= 0 ? '#22c55e' : '#ef4444';
+                        s += '<div style="font-size:12px;color:' + color + '">' + p.seriesName + ': ' + (p.value >= 0 ? '+' : '') + p.value.toFixed(2) + '%</div>';
+                    }
+                }
+                return s;
+            },
+            backgroundColor: 'rgba(30, 41, 59, 0.95)', borderColor: '#475569'
+        },
+        legend: { data: ['策略月收益', '买入持有月收益'], top: 0, right: 10, textStyle: { color: '#94a3b8', fontSize: 11 } },
+        grid: { left: 60, right: 20, bottom: 30, top: 40 },
+        xAxis: { type: 'category', data: months, axisLabel: { color: '#64748b', fontSize: 10, rotate: 30 }, axisLine: { lineStyle: { color: '#1e293b' } }, axisTick: { show: false }, splitLine: { show: false } },
+        yAxis: { type: 'value', axisLabel: { color: '#94a3b8', fontSize: 11, formatter: '{value}%' }, axisLine: { lineStyle: { color: '#1e293b' } }, axisTick: { show: false }, splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } } },
+        series: [
+            {
+                name: '策略月收益', type: 'bar', data: strategyReturns,
+                itemStyle: {
+                    color: function(params) { return params.value >= 0 ? '#22c55e' : '#ef4444'; },
+                    borderRadius: [3, 3, 0, 0]
+                },
+                barMaxWidth: 30
+            },
+            {
+                name: '买入持有月收益', type: 'line', data: bhReturns,
+                lineStyle: { color: '#f59e0b', width: 2 },
+                itemStyle: { color: '#f59e0b' },
+                symbol: 'circle', symbolSize: 6
+            }
+        ]
+    };
+    chartMonthlyReturn.setOption(option, true);
 }
 
 function renderTradeLog(result) {
@@ -1977,6 +1982,8 @@ window.addEventListener('resize', () => {
     if (chartAllocation) chartAllocation.resize();
     if (chartCashRatio) chartCashRatio.resize();
     if (chartBankPerf) chartBankPerf.resize();
+    if (chartDrawdown) chartDrawdown.resize();
+    if (chartMonthlyReturn) chartMonthlyReturn.resize();
 });
 
 let lastResult = null;
