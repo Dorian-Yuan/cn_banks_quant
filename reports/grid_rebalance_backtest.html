@@ -162,6 +162,15 @@
             border-bottom: 1px solid var(--border-color); margin: 8px 0 4px 0;
         }
 
+        .indicator-hint {
+            font-size: 11px; color: #64748b; padding: 6px 12px 0 12px;
+            line-height: 1.6;
+        }
+        .indicator-hint b { color: #94a3b8; }
+        .indicator-hint .tag-up { color: #22c55e; font-weight: 600; }
+        .indicator-hint .tag-down { color: #ef4444; font-weight: 600; }
+        .indicator-hint .tag-warn { color: #f59e0b; font-weight: 600; }
+
         .trade-log-section {
             background: var(--card-bg); border: 1px solid var(--border-color);
             border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
@@ -491,10 +500,25 @@
 
         <div class="chart-container">
             <div id="chartMACD" class="chart"></div>
+            <div class="indicator-hint">
+                <b>MACD 看法：</b>
+                DIF 上穿 DEA → <span class="tag-up">金叉看多</span>；
+                DIF 下穿 DEA → <span class="tag-down">死叉看空</span>；
+                红柱变长=多头增强，绿柱变长=空头增强；
+                零轴上方=中期偏多，零轴下方=中期偏空
+            </div>
         </div>
 
         <div class="chart-container">
             <div id="chartRSI" class="chart"></div>
+            <div class="indicator-hint">
+                <b>RSI 看法：</b>
+                RSI &gt; 70 → <span class="tag-warn">超买，注意回调</span>；
+                RSI &lt; 30 → <span class="tag-warn">超卖，关注反弹</span>；
+                RSI6 上穿 RSI24 → <span class="tag-up">短期转强</span>；
+                RSI6 下穿 RSI24 → <span class="tag-down">短期转弱</span>；
+                网格策略中：超卖区买入信号更可靠，超买区卖出信号更可靠
+            </div>
         </div>
 
         <div class="section-title">📋 绩效分析</div>
