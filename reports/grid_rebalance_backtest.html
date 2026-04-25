@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>波段再平准策略 V1.3.0 · 多银行网格回测系统</title>
+    <title>波段再平准策略 V1.3.1 · 多银行网格回测系统</title>
     <link rel="icon" type="image/png" href="../assets/icon/grid_rebalance_logo.png">
     <link rel="apple-touch-icon" href="../assets/icon/grid_rebalance_logo.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -151,7 +151,7 @@
 
         .chart-container {
             background: var(--card-bg); border: 1px solid var(--border-color);
-            border-radius: 10px; padding: 16px; min-height: 420px;
+            border-radius: 10px; padding: 16px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
         .chart-container .chart { width: 100%; height: 400px; }
@@ -224,7 +224,7 @@
 <div class="dashboard">
     <div class="sidebar">
         <div class="header">
-            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.3.0</span></h2>
+            <h2>📊 波段再平准策略 <span style="font-size:0.5em;color:#999">V1.3.1</span></h2>
             <p>多银行网格交易 · 交互式回测系统</p>
         </div>
 
@@ -698,7 +698,7 @@ function getPortfolioCloseData(result) {
     return { dates: dates, closes: closes };
 }
 
-const CACHE_KEY = 'backtest_v130_config';
+const CACHE_KEY = 'backtest_v131_config';
 
 function saveConfig() {
     try {
