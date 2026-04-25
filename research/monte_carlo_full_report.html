@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>蒙特卡洛随机回测报告</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+.header { text-align: center; padding: 40px 20px; background: linear-gradient(135deg, #16213e, #0f3460); border-radius: 16px; margin-bottom: 24px; }
+.header h1 { font-size: 2em; color: #fff; margin-bottom: 8px; }
+.header .subtitle { color: #a0c4ff; font-size: 1.1em; margin-bottom: 16px; }
+.header .meta { display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; color: #8899aa; font-size: 0.9em; }
+.card { background: #16213e; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.card h2 { color: #a0c4ff; margin-bottom: 16px; border-bottom: 1px solid #2a3a5e; padding-bottom: 8px; }
+.card h3 { color: #7eb8da; margin: 16px 0 8px; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.9em; }
+th, td { padding: 10px 12px; text-align: center; border: 1px solid #2a3a5e; }
+th { background: #0f3460; color: #a0c4ff; font-weight: 600; }
+tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+tr:hover { background: rgba(255,255,255,0.06); }
+.overview-table td { font-weight: 600; }
+.conclusion ul { padding-left: 24px; line-height: 1.8; }
+.conclusion li { margin-bottom: 4px; }
+.optimal-strategy h3 { color: #f1c40f; margin-top: 24px; }
+.optimal-strategy h4 { color: #e67e22; margin: 16px 0 8px; }
+.optimal-strategy ol, .optimal-strategy ul { padding-left: 24px; line-height: 1.8; }
+.optimal-strategy li { margin-bottom: 4px; }
+.rule-box { background: rgba(255,255,255,0.05); border-left: 3px solid #3498db; padding: 12px 16px; margin: 12px 0; border-radius: 4px; }
+.checklist ul { list-style: none; padding-left: 8px; }
+.checklist li { margin-bottom: 2px; }
+.note { color: #8899aa; font-style: italic; margin-top: 8px; }
+@media (max-width: 768px) {
+    .header h1 { font-size: 1.5em; }
+    .header .meta { flex-direction: column; gap: 4px; }
+    th, td { padding: 6px 8px; font-size: 0.8em; }
+}
+</style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>蒙特卡洛随机回测报告</h1>
+        <p class="subtitle">多银行波段再平准网格策略 — 参数敏感性分析</p>
+        <div class="meta">
+            <span>生成时间: 2026-04-21 14:36:10</span>
+            <span>数据范围: 2015-01-05 至今</span>
+            <span>标的池: 5/6大行动态切换(2019-12-10前5行,之后6行)</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>总览仪表盘</h2>
+        <table class="overview-table">
+            <thead><tr><th>实验</th><th>短期(0~6个月)</th><th>中期(7~12个月)</th><th>中长期(12~24个月)</th><th>长期(>24个月)</th></tr></thead>
+            <tbody><tr><td>实验1: 基础超额测试</td><td style="background:rgba(241,196,15,0.3)">57.6%</td><td style="background:rgba(46,204,113,0.4)">63.4%</td><td style="background:rgba(46,204,113,0.4)">73.8%</td><td style="background:rgba(46,204,113,0.4)">96.9%</td></tr><tr><td>实验2: 网格步长对比</td><td style="background:rgba(230,126,34,0.3)">47.0%</td><td style="background:rgba(241,196,15,0.3)">50.3%</td><td style="background:rgba(241,196,15,0.3)">51.8%</td><td style="background:rgba(241,196,15,0.3)">51.3%</td></tr><tr><td>实验3: 单次调仓力度对比 (vs 30%)</td><td style="background:rgba(230,126,34,0.3)">42.5%</td><td style="background:rgba(230,126,34,0.3)">41.2%</td><td style="background:rgba(231,76,60,0.3)">39.4%</td><td style="background:rgba(231,76,60,0.3)">33.3%</td></tr><tr><td>实验3: 单次调仓力度对比 (vs 10%)</td><td style="background:rgba(241,196,15,0.3)">55.1%</td><td style="background:rgba(241,196,15,0.3)">55.9%</td><td style="background:rgba(241,196,15,0.3)">56.9%</td><td style="background:rgba(46,204,113,0.4)">79.7%</td></tr><tr><td>实验4: 再平准频率对比 (月度胜率)</td><td style="background:rgba(241,196,15,0.3)">54.4%</td><td style="background:rgba(241,196,15,0.3)">50.9%</td><td style="background:rgba(241,196,15,0.3)">51.0%</td><td style="background:rgba(46,204,113,0.4)">73.6%</td></tr><tr><td>实验4: 再平准频率对比 (季度胜率)</td><td style="background:rgba(230,126,34,0.3)">40.6%</td><td style="background:rgba(231,76,60,0.3)">18.7%</td><td style="background:rgba(231,76,60,0.3)">15.0%</td><td style="background:rgba(231,76,60,0.3)">11.6%</td></tr><tr><td>实验4: 再平准频率对比 (年度胜率)</td><td style="background:rgba(230,126,34,0.3)">43.0%</td><td style="background:rgba(231,76,60,0.3)">30.4%</td><td style="background:rgba(231,76,60,0.3)">34.0%</td><td style="background:rgba(231,76,60,0.3)">14.8%</td></tr><tr><td>实验5: 网格对称性对比 (vs 对称)</td><td style="background:rgba(241,196,15,0.3)">54.5%</td><td style="background:rgba(241,196,15,0.3)">57.9%</td><td style="background:rgba(241,196,15,0.3)">56.1%</td><td style="background:rgba(46,204,113,0.4)">67.5%</td></tr><tr><td>实验5: 网格对称性对比 (vs 早止盈)</td><td style="background:rgba(241,196,15,0.3)">57.0%</td><td style="background:rgba(46,204,113,0.4)">64.5%</td><td style="background:rgba(46,204,113,0.4)">65.8%</td><td style="background:rgba(46,204,113,0.4)">83.3%</td></tr><tr><td>实验6: 最低底仓限制对比 (vs 30%)</td><td style="background:rgba(231,76,60,0.3)">21.5%</td><td style="background:rgba(231,76,60,0.3)">27.3%</td><td style="background:rgba(231,76,60,0.3)">27.6%</td><td style="background:rgba(231,76,60,0.3)">26.3%</td></tr><tr><td>实验6: 最低底仓限制对比 (vs 70%)</td><td style="background:rgba(230,126,34,0.3)">46.0%</td><td style="background:rgba(241,196,15,0.3)">59.7%</td><td style="background:rgba(46,204,113,0.4)">64.8%</td><td style="background:rgba(46,204,113,0.4)">76.4%</td></tr><tr><td>实验7: 多标的vs单标的</td><td style="background:rgba(241,196,15,0.3)">55.2%</td><td style="background:rgba(46,204,113,0.4)">66.4%</td><td style="background:rgba(46,204,113,0.4)">66.3%</td><td style="background:rgba(46,204,113,0.4)">91.3%</td></tr><tr><td>实验8: 抗回撤与风险控制 (抗跌胜率)</td><td style="background:rgba(46,204,113,0.4)">85.0%</td><td style="background:rgba(46,204,113,0.4)">91.8%</td><td style="background:rgba(46,204,113,0.4)">98.6%</td><td style="background:rgba(46,204,113,0.4)">98.9%</td></tr><tr><td>实验8: 抗回撤与风险控制 (夏普胜率)</td><td style="background:rgba(46,204,113,0.4)">73.3%</td><td style="background:rgba(46,204,113,0.4)">80.6%</td><td style="background:rgba(46,204,113,0.4)">89.9%</td><td style="background:rgba(46,204,113,0.4)">98.9%</td></tr><tr><td>补充A: 初始资金敏感度 (10000元)</td><td style="background:rgba(241,196,15,0.3)">52.3%</td><td style="background:rgba(230,126,34,0.3)">48.7%</td><td style="background:rgba(241,196,15,0.3)">52.8%</td><td style="background:rgba(46,204,113,0.4)">91.0%</td></tr><tr><td>补充A: 初始资金敏感度 (30000元)</td><td style="background:rgba(241,196,15,0.3)">58.2%</td><td style="background:rgba(46,204,113,0.4)">61.1%</td><td style="background:rgba(46,204,113,0.4)">71.6%</td><td style="background:rgba(46,204,113,0.4)">96.2%</td></tr><tr><td>补充A: 初始资金敏感度 (100000元)</td><td style="background:rgba(241,196,15,0.3)">57.3%</td><td style="background:rgba(46,204,113,0.4)">66.2%</td><td style="background:rgba(46,204,113,0.4)">78.5%</td><td style="background:rgba(46,204,113,0.4)">97.9%</td></tr><tr><td>补充A: 初始资金敏感度 (500000元)</td><td style="background:rgba(46,204,113,0.4)">61.2%</td><td style="background:rgba(46,204,113,0.4)">68.6%</td><td style="background:rgba(46,204,113,0.4)">82.8%</td><td style="background:rgba(46,204,113,0.4)">98.1%</td></tr><tr><td>补充B: 标的数量敏感度 (2只(工行+建行))</td><td>30.57%</td><td>26.87%</td><td>21.90%</td><td>25.14%</td></tr><tr><td>补充B: 标的数量敏感度 (4只(工建农中))</td><td>27.56%</td><td>24.24%</td><td>19.84%</td><td>27.19%</td></tr><tr><td>补充B: 标的数量敏感度 (5只(前5大行))</td><td>26.95%</td><td>24.71%</td><td>21.95%</td><td>27.54%</td></tr><tr><td>补充B: 标的数量敏感度 (6只(全部))</td><td>28.88%</td><td>25.50%</td><td>23.25%</td><td>27.13%</td></tr><tr><td>补充C: 市场环境分环境 (牛市)</td><td style="background:rgba(46,204,113,0.4)">71.4%</td><td style="background:rgba(46,204,113,0.4)">75.0%</td><td style="background:rgba(46,204,113,0.4)">74.2%</td><td style="background:rgba(46,204,113,0.4)">98.0%</td></tr><tr><td>补充C: 市场环境分环境 (熊市)</td><td style="background:rgba(46,204,113,0.4)">100.0%</td><td style="background:rgba(46,204,113,0.4)">81.8%</td><td style="background:rgba(46,204,113,0.4)">100.0%</td><td style="background:rgba(46,204,113,0.4)">100.0%</td></tr><tr><td>补充C: 市场环境分环境 (震荡)</td><td style="background:rgba(46,204,113,0.4)">62.5%</td><td style="background:rgba(46,204,113,0.4)">62.2%</td><td style="background:rgba(46,204,113,0.4)">72.3%</td><td style="background:rgba(46,204,113,0.4)">95.1%</td></tr><tr><td>补充D: 分红处理方式对比</td><td style="background:rgba(231,76,60,0.3)">18.0%</td><td style="background:rgba(230,126,34,0.3)">46.6%</td><td style="background:rgba(241,196,15,0.3)">56.2%</td><td style="background:rgba(46,204,113,0.4)">61.4%</td></tr><tr><td>补充E: 交易成本敏感度 (免5(0.5起))</td><td style="background:rgba(241,196,15,0.3)">58.3%</td><td style="background:rgba(46,204,113,0.4)">65.2%</td><td style="background:rgba(46,204,113,0.4)">75.6%</td><td style="background:rgba(46,204,113,0.4)">95.9%</td></tr><tr><td>补充E: 交易成本敏感度 (不免5(5起))</td><td style="background:rgba(231,76,60,0.3)">32.6%</td><td style="background:rgba(231,76,60,0.3)">18.5%</td><td style="background:rgba(231,76,60,0.3)">15.7%</td><td style="background:rgba(241,196,15,0.3)">51.9%</td></tr><tr><td>补充E: 交易成本敏感度 (高佣金(万3,5起))</td><td style="background:rgba(231,76,60,0.3)">31.7%</td><td style="background:rgba(231,76,60,0.3)">20.1%</td><td style="background:rgba(231,76,60,0.3)">14.4%</td><td style="background:rgba(241,196,15,0.3)">56.0%</td></tr><tr><td>补充F: 纯再平准(无网格)</td><td style="background:rgba(231,76,60,0.3)">36.4%</td><td style="background:rgba(230,126,34,0.3)">40.3%</td><td style="background:rgba(231,76,60,0.3)">37.0%</td><td style="background:rgba(231,76,60,0.3)">13.4%</td></tr><tr><td>补充G: 网格最大循环次数 (vs 循环1次)</td><td style="background:rgba(46,204,113,0.4)">63.6%</td><td style="background:rgba(46,204,113,0.4)">84.4%</td><td style="background:rgba(46,204,113,0.4)">87.7%</td><td style="background:rgba(46,204,113,0.4)">98.7%</td></tr><tr><td>补充G: 网格最大循环次数 (vs 循环10次)</td><td style="background:rgba(231,76,60,0.3)">1.1%</td><td style="background:rgba(231,76,60,0.3)">2.1%</td><td style="background:rgba(231,76,60,0.3)">3.1%</td><td style="background:rgba(231,76,60,0.3)">3.3%</td></tr><tr><td>补充H: 大范围网格步长扫描 (卖1%买0.5%)</td><td style="background:rgba(46,204,113,0.4)">72.1%</td><td style="background:rgba(46,204,113,0.4)">80.3%</td><td style="background:rgba(46,204,113,0.4)">97.1%</td><td style="background:rgba(46,204,113,0.4)">100.0%</td></tr><tr><td>补充H: 大范围网格步长扫描 (卖2%买1%)</td><td style="background:rgba(46,204,113,0.4)">67.1%</td><td style="background:rgba(46,204,113,0.4)">68.5%</td><td style="background:rgba(46,204,113,0.4)">86.9%</td><td style="background:rgba(46,204,113,0.4)">100.0%</td></tr><tr><td>补充H: 大范围网格步长扫描 (卖3%买2%)</td><td style="background:rgba(241,196,15,0.3)">57.7%</td><td style="background:rgba(46,204,113,0.4)">63.5%</td><td style="background:rgba(46,204,113,0.4)">73.7%</td><td style="background:rgba(46,204,113,0.4)">96.8%</td></tr><tr><td>补充H: 大范围网格步长扫描 (卖5%买3%)</td><td style="background:rgba(241,196,15,0.3)">54.8%</td><td style="background:rgba(46,204,113,0.4)">61.4%</td><td style="background:rgba(46,204,113,0.4)">70.7%</td><td style="background:rgba(46,204,113,0.4)">92.5%</td></tr><tr><td>补充H: 大范围网格步长扫描 (卖8%买5%)</td><td style="background:rgba(241,196,15,0.3)">56.1%</td><td style="background:rgba(46,204,113,0.4)">67.4%</td><td style="background:rgba(46,204,113,0.4)">79.0%</td><td style="background:rgba(46,204,113,0.4)">97.3%</td></tr><tr><td>补充I: 滑点影响测试 (vs 0.1%滑点)</td><td style="background:rgba(231,76,60,0.3)">31.1%</td><td style="background:rgba(230,126,34,0.3)">47.6%</td><td style="background:rgba(241,196,15,0.3)">59.5%</td><td style="background:rgba(46,204,113,0.4)">80.0%</td></tr><tr><td>补充I: 滑点影响测试 (vs 0.2%滑点)</td><td style="background:rgba(46,204,113,0.4)">85.9%</td><td style="background:rgba(46,204,113,0.4)">92.1%</td><td style="background:rgba(46,204,113,0.4)">94.4%</td><td style="background:rgba(46,204,113,0.4)">99.8%</td></tr><tr><td>补充J: 永不再平准(纯网格)</td><td style="background:rgba(230,126,34,0.3)">47.6%</td><td style="background:rgba(241,196,15,0.3)">50.4%</td><td style="background:rgba(241,196,15,0.3)">58.0%</td><td style="background:rgba(46,204,113,0.4)">82.2%</td></tr><tr><td>补充K: 蒙特卡洛收敛性验证 (n=200)</td><td>-</td><td>-</td><td style="background:rgba(46,204,113,0.4)">75.5%</td><td>-</td></tr><tr><td>补充K: 蒙特卡洛收敛性验证 (n=500)</td><td>-</td><td>-</td><td style="background:rgba(46,204,113,0.4)">77.0%</td><td>-</td></tr><tr><td>补充K: 蒙特卡洛收敛性验证 (n=1000)</td><td>-</td><td>-</td><td style="background:rgba(46,204,113,0.4)">74.7%</td><td>-</td></tr><tr><td>补充K: 蒙特卡洛收敛性验证 (n=2000)</td><td>-</td><td>-</td><td style="background:rgba(46,204,113,0.4)">74.0%</td><td>-</td></tr><tr><td>补充L: 极端行情压力测试 (2015年股灾)</td><td style="background:rgba(46,204,113,0.4)">4.53%</td><td style="background:rgba(46,204,113,0.4)">4.53%</td><td style="background:rgba(46,204,113,0.4)">4.53%</td><td style="background:rgba(46,204,113,0.4)">4.53%</td></tr><tr><td>补充L: 极端行情压力测试 (2018年熊市)</td><td style="background:rgba(46,204,113,0.4)">3.77%</td><td style="background:rgba(46,204,113,0.4)">3.77%</td><td style="background:rgba(46,204,113,0.4)">3.77%</td><td style="background:rgba(46,204,113,0.4)">3.77%</td></tr><tr><td>补充L: 极端行情压力测试 (2020年新冠)</td><td style="background:rgba(46,204,113,0.4)">0.93%</td><td style="background:rgba(46,204,113,0.4)">0.93%</td><td style="background:rgba(46,204,113,0.4)">0.93%</td><td style="background:rgba(46,204,113,0.4)">0.93%</td></tr><tr><td>补充L: 极端行情压力测试 (2022年回调)</td><td style="background:rgba(46,204,113,0.4)">1.96%</td><td style="background:rgba(46,204,113,0.4)">1.96%</td><td style="background:rgba(46,204,113,0.4)">1.96%</td><td style="background:rgba(46,204,113,0.4)">1.96%</td></tr></tbody>
+        </table>
+    </div>
+<div class="card"><h2>实验1: 基础超额测试</h2><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>57.60%</td><td>100.94%</td><td>1.42%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>63.40%</td><td>2.59%</td><td>1.38%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>73.80%</td><td>2.98%</td><td>1.88%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>96.90%</td><td>5.29%</td><td>5.62%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173577789248" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173577789248'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-85762.7~-79527.2", "-79527.2~-73291.6", "-73291.6~-67056.1", "-67056.1~-60820.6", "-60820.6~-54585.1", "-54585.1~-48349.6", "-48349.6~-42114.1", "-42114.1~-35878.6", "-35878.6~-29643.1", "-29643.1~-23407.6", "-23407.6~-17172.1", "-17172.1~-10936.6", "-10936.6~-4701.0", "-4701.0~1534.5", "1534.5~7770.0", "7770.0~14005.5", "14005.5~20241.0", "20241.0~26476.5", "26476.5~32712.0", "32712.0~38947.5", "38947.5~45183.0", "45183.0~51418.5", "51418.5~57654.1", "57654.1~63889.6", "63889.6~70125.1", "70125.1~76360.6", "76360.6~82596.1", "82596.1~88831.6", "88831.6~95067.1", "95067.1~101302.6"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 994, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [2, 2, 4, 3, 12, 25, 66, 176, 394, 180, 44, 39, 21, 2, 5, 6, 5, 5, 2, 1, 1, 2, 0, 0, 1, 0, 0, 1, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 2, 1, 12, 18, 28, 39, 89, 147, 247, 154, 66, 37, 48, 36, 21, 10, 5, 10, 5, 5, 7, 1, 3, 0, 3, 2, 1, 0, 2]}, {"name": "长期(>24个月)", "type": "bar", "data": [2, 4, 3, 15, 26, 52, 97, 101, 91, 93, 134, 138, 138, 69, 11, 9, 8, 3, 1, 2, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>实验2: 网格步长对比</h2><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>47.00%</td><td>24.48%</td><td>-0.30%</td><td>0.4515</td><td></td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>50.30%</td><td>-0.54%</td><td>0.07%</td><td>0.9516</td><td></td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>51.80%</td><td>-0.26%</td><td>0.21%</td><td>0.7107</td><td></td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>51.30%</td><td>-0.02%</td><td>0.07%</td><td>0.4201</td><td></td></tr></tbody></table><div id="chart_2173578862400" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173578862400'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-460.9~-167.2", "-167.2~126.5", "126.5~420.2", "420.2~713.9", "713.9~1007.6", "1007.6~1301.3", "1301.3~1595.0", "1595.0~1888.8", "1888.8~2182.5", "2182.5~2476.2", "2476.2~2769.9", "2769.9~3063.6", "3063.6~3357.3", "3357.3~3651.0", "3651.0~3944.7", "3944.7~4238.4", "4238.4~4532.1", "4532.1~4825.9", "4825.9~5119.6", "5119.6~5413.3", "5413.3~5707.0", "5707.0~6000.7", "6000.7~6294.4", "6294.4~6588.1", "6588.1~6881.8", "6881.8~7175.5", "7175.5~7469.3", "7469.3~7763.0", "7763.0~8056.7", "8056.7~8350.4"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [5, 975, 11, 3, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 0, 0, 1, 3, 1, 1, 0, 0, 1, 1, 1, 1, 4, 14, 28, 29, 56, 116, 188, 236, 149, 84, 49, 19, 8, 6, 1, 2]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 1, 5, 2, 5, 11, 15, 28, 40, 55, 72, 97, 121, 153, 134, 124, 62, 28, 16, 14, 7, 3, 3, 1, 2]}, {"name": "长期(>24个月)", "type": "bar", "data": [2, 0, 4, 3, 6, 11, 15, 25, 44, 64, 101, 131, 145, 147, 113, 90, 55, 34, 4, 2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>实验3: 单次调仓力度对比</h2><h3>vs 单次30%</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>42.50%</td><td>10.25%</td><td>-0.25%</td><td>0.0027</td><td>**</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>41.20%</td><td>-1.32%</td><td>-0.44%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>39.40%</td><td>-0.49%</td><td>-0.42%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>33.30%</td><td>-0.42%</td><td>-0.41%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173585473088" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173585473088'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-5524.5~-4937.9", "-4937.9~-4351.3", "-4351.3~-3764.7", "-3764.7~-3178.1", "-3178.1~-2591.6", "-2591.6~-2005.0", "-2005.0~-1418.4", "-1418.4~-831.8", "-831.8~-245.2", "-245.2~341.4", "341.4~928.0", "928.0~1514.6", "1514.6~2101.1", "2101.1~2687.7", "2687.7~3274.3", "3274.3~3860.9", "3860.9~4447.5", "4447.5~5034.1", "5034.1~5620.7", "5620.7~6207.2", "6207.2~6793.8", "6793.8~7380.4", "7380.4~7967.0", "7967.0~8553.6", "8553.6~9140.2", "9140.2~9726.8", "9726.8~10313.4", "10313.4~10899.9", "10899.9~11486.5", "11486.5~12073.1"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 1, 1, 989, 5, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 1, 3, 2, 2, 2, 1, 4, 3, 5, 16, 71, 202, 432, 191, 50, 10, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 2, 1, 6, 12, 15, 30, 67, 125, 219, 244, 122, 61, 33, 32, 13, 6, 3, 3]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 5, 12, 26, 56, 141, 201, 235, 159, 94, 40, 17, 4, 1, 1, 1, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script><h3>vs 单次10%</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>55.10%</td><td>-43.98%</td><td>0.46%</td><td>0.0263</td><td>*</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>55.90%</td><td>-0.23%</td><td>0.43%</td><td>0.0243</td><td>*</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>56.90%</td><td>0.01%</td><td>0.33%</td><td>0.0012</td><td>**</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>79.70%</td><td>1.00%</td><td>0.99%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173578828736" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173578828736'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-41646.7~-40167.9", "-40167.9~-38689.1", "-38689.1~-37210.3", "-37210.3~-35731.6", "-35731.6~-34252.8", "-34252.8~-32774.0", "-32774.0~-31295.2", "-31295.2~-29816.5", "-29816.5~-28337.7", "-28337.7~-26858.9", "-26858.9~-25380.1", "-25380.1~-23901.4", "-23901.4~-22422.6", "-22422.6~-20943.8", "-20943.8~-19465.0", "-19465.0~-17986.3", "-17986.3~-16507.5", "-16507.5~-15028.7", "-15028.7~-13549.9", "-13549.9~-12071.2", "-12071.2~-10592.4", "-10592.4~-9113.6", "-9113.6~-7634.8", "-7634.8~-6156.1", "-6156.1~-4677.3", "-4677.3~-3198.5", "-3198.5~-1719.7", "-1719.7~-241.0", "-241.0~1237.8", "1237.8~2716.6"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 992, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [3, 0, 1, 0, 1, 0, 1, 1, 5, 5, 8, 18, 16, 33, 33, 85, 204, 300, 187, 55, 19, 10, 2, 1, 6, 0, 2, 1, 1, 2]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [4, 3, 9, 7, 5, 8, 7, 13, 15, 19, 22, 30, 51, 106, 169, 188, 140, 63, 36, 43, 35, 10, 5, 8, 1, 2, 0, 0, 0, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 0, 1, 2, 1, 2, 1, 2, 4, 7, 7, 18, 24, 34, 55, 73, 137, 138, 142, 118, 78, 39, 43, 24, 16, 21, 6, 4, 0, 2]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>实验4: 再平准频率对比</h2><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>月度胜率</th><th>季度胜率</th><th>年度胜率</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>54.40%</td><td>40.60%</td><td>43.00%</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>50.90%</td><td>18.70%</td><td>30.40%</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>51.00%</td><td>15.00%</td><td>34.00%</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>73.60%</td><td>11.60%</td><td>14.80%</td></tr></tbody></table></div>
+<div class="card"><h2>实验5: 网格对称性对比</h2><h3>vs 对称网格</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>54.50%</td><td>50.91%</td><td>0.61%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>57.90%</td><td>0.35%</td><td>0.59%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>56.10%</td><td>0.35%</td><td>0.48%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>67.50%</td><td>0.67%</td><td>0.72%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173584910464" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173584910464'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-230.1~1246.9", "1246.9~2723.8", "2723.8~4200.8", "4200.8~5677.8", "5677.8~7154.7", "7154.7~8631.7", "8631.7~10108.7", "10108.7~11585.6", "11585.6~13062.6", "13062.6~14539.6", "14539.6~16016.6", "16016.6~17493.5", "17493.5~18970.5", "18970.5~20447.5", "20447.5~21924.4", "21924.4~23401.4", "23401.4~24878.4", "24878.4~26355.3", "26355.3~27832.3", "27832.3~29309.3", "29309.3~30786.2", "30786.2~32263.2", "32263.2~33740.2", "33740.2~35217.1", "35217.1~36694.1", "36694.1~38171.1", "38171.1~39648.0", "39648.0~41125.0", "41125.0~42602.0", "42602.0~44079.0"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [999, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 0, 4, 2, 0, 10, 30, 113, 318, 331, 133, 40, 10, 4]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [3, 0, 1, 0, 0, 0, 2, 2, 2, 3, 3, 6, 2, 18, 45, 74, 155, 169, 168, 167, 103, 36, 16, 10, 7, 3, 3, 1, 0, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [2, 1, 2, 1, 6, 4, 3, 11, 17, 14, 18, 34, 42, 52, 77, 101, 103, 105, 101, 87, 62, 58, 36, 13, 19, 13, 9, 4, 3, 2]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script><h3>vs 早止盈网格</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>57.00%</td><td>107.91%</td><td>1.68%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>64.50%</td><td>1.69%</td><td>3.07%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>65.80%</td><td>1.94%</td><td>2.43%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>83.30%</td><td>2.93%</td><td>2.97%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173578293248" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173578293248'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-147.8~3011.8", "3011.8~6171.3", "6171.3~9330.8", "9330.8~12490.3", "12490.3~15649.9", "15649.9~18809.4", "18809.4~21968.9", "21968.9~25128.5", "25128.5~28288.0", "28288.0~31447.5", "31447.5~34607.1", "34607.1~37766.6", "37766.6~40926.1", "40926.1~44085.6", "44085.6~47245.2", "47245.2~50404.7", "50404.7~53564.2", "53564.2~56723.8", "56723.8~59883.3", "59883.3~63042.8", "63042.8~66202.4", "66202.4~69361.9", "69361.9~72521.4", "72521.4~75680.9", "75680.9~78840.5", "78840.5~82000.0", "82000.0~85159.5", "85159.5~88319.1", "88319.1~91478.6", "91478.6~94638.1"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [999, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 3, 2, 1, 0, 3, 3, 4, 8, 18, 19, 24, 32, 24, 99, 242, 229, 137, 71, 52, 19, 5, 2, 1, 0, 0, 0, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 1, 0, 4, 4, 1, 1, 3, 5, 12, 15, 24, 32, 32, 58, 119, 172, 167, 128, 75, 62, 43, 22, 12, 5, 2]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 1, 3, 4, 3, 10, 17, 19, 35, 42, 54, 114, 126, 105, 114, 117, 79, 69, 34, 28, 11, 8, 4, 1, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>实验6: 最低底仓限制对比</h2><h3>vs 单次30%</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>21.50%</td><td>-5.67%</td><td>0.00%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>27.30%</td><td>-1.47%</td><td>-0.34%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>27.60%</td><td>-0.98%</td><td>-0.56%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>26.30%</td><td>-0.55%</td><td>-0.44%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173585429504" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173585429504'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-4020.4~-3871.2", "-3871.2~-3721.9", "-3721.9~-3572.6", "-3572.6~-3423.4", "-3423.4~-3274.1", "-3274.1~-3124.8", "-3124.8~-2975.6", "-2975.6~-2826.3", "-2826.3~-2677.0", "-2677.0~-2527.8", "-2527.8~-2378.5", "-2378.5~-2229.2", "-2229.2~-2080.0", "-2080.0~-1930.7", "-1930.7~-1781.4", "-1781.4~-1632.2", "-1632.2~-1482.9", "-1482.9~-1333.7", "-1333.7~-1184.4", "-1184.4~-1035.1", "-1035.1~-885.9", "-885.9~-736.6", "-736.6~-587.3", "-587.3~-438.1", "-438.1~-288.8", "-288.8~-139.5", "-139.5~9.7", "9.7~159.0", "159.0~308.3", "308.3~457.5"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 964, 31, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 2, 0, 0, 2, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 6, 8, 5, 6, 8, 8, 19, 73, 135, 563, 102, 36, 13, 6, 4]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 0, 3, 1, 0, 5, 5, 6, 4, 3, 4, 6, 10, 10, 12, 27, 58, 141, 228, 291, 74, 47, 29, 21, 7, 2, 2, 2, 0, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 4, 3, 3, 10, 11, 22, 59, 130, 219, 297, 143, 51, 20, 11, 5, 3, 1, 1, 2]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script><h3>vs 底仓70%</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>46.00%</td><td>0.29%</td><td>0.00%</td><td>0.0014</td><td>**</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>59.70%</td><td>0.27%</td><td>0.37%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>64.80%</td><td>0.39%</td><td>0.48%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>76.40%</td><td>0.51%</td><td>0.53%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173584900160" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173584900160'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-1013.2~-872.7", "-872.7~-732.2", "-732.2~-591.7", "-591.7~-451.2", "-451.2~-310.7", "-310.7~-170.2", "-170.2~-29.7", "-29.7~110.8", "110.8~251.3", "251.3~391.8", "391.8~532.3", "532.3~672.8", "672.8~813.3", "813.3~953.8", "953.8~1094.3", "1094.3~1234.8", "1234.8~1375.2", "1375.2~1515.7", "1515.7~1656.2", "1656.2~1796.7", "1796.7~1937.2", "1937.2~2077.7", "2077.7~2218.2", "2218.2~2358.7", "2358.7~2499.2", "2499.2~2639.7", "2639.7~2780.2", "2780.2~2920.7", "2920.7~3061.2", "3061.2~3201.7"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 1, 1, 1, 0, 2, 19, 972, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 3, 7, 4, 20, 17, 46, 143, 460, 191, 65, 21, 8, 5, 2, 2, 1, 0, 0, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 2, 5, 4, 5, 13, 19, 15, 17, 13, 30, 46, 108, 191, 196, 149, 71, 35, 18, 21, 11, 6, 6, 6, 3, 2, 3, 1, 2, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 0, 4, 5, 8, 7, 14, 16, 24, 38, 52, 79, 142, 113, 138, 98, 89, 60, 45, 35, 14, 5, 7, 1, 4, 0, 0, 0, 0, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>实验7: 多标的vs单标的</h2><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>55.20%</td><td>2464905.05%</td><td>2.65%</td><td>0.0007</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>66.40%</td><td>6.61%</td><td>5.13%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>66.30%</td><td>7.52%</td><td>7.06%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>91.30%</td><td>10.74%</td><td>11.16%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173578497536" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173578497536'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-2860.2~82160657.4", "82160657.4~164324175.1", "164324175.1~246487692.8", "246487692.8~328651210.4", "328651210.4~410814728.1", "410814728.1~492978245.8", "492978245.8~575141763.4", "575141763.4~657305281.1", "657305281.1~739468798.8", "739468798.8~821632316.4", "821632316.4~903795834.1", "903795834.1~985959351.8", "985959351.8~1068122869.5", "1068122869.5~1150286387.1", "1150286387.1~1232449904.8", "1232449904.8~1314613422.5", "1314613422.5~1396776940.1", "1396776940.1~1478940457.8", "1478940457.8~1561103975.5", "1561103975.5~1643267493.1", "1643267493.1~1725431010.8", "1725431010.8~1807594528.5", "1807594528.5~1889758046.1", "1889758046.1~1971921563.8", "1971921563.8~2054085081.5", "2054085081.5~2136248599.1", "2136248599.1~2218412116.8", "2218412116.8~2300575634.5", "2300575634.5~2382739152.1", "2382739152.1~2464902669.8"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [999, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 5, 7, 11, 24, 35, 80, 111, 162, 172, 125, 71, 66, 54, 36, 17, 11, 2, 5, 0, 2, 0, 1, 0, 0, 1, 0, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 1, 7, 4, 8, 29, 30, 56, 85, 76, 69, 54, 50, 81, 61, 69, 47, 44, 48, 48, 40, 38, 27, 15, 6, 2, 2, 0, 0, 2]}, {"name": "长期(>24个月)", "type": "bar", "data": [3, 3, 8, 8, 12, 9, 16, 17, 26, 41, 32, 48, 57, 63, 56, 75, 77, 70, 80, 54, 50, 43, 42, 44, 30, 6, 10, 11, 5, 4]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>实验8: 抗回撤与风险控制</h2><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>抗跌胜率</th><th>夏普胜率</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>85.00%</td><td>73.30%</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>91.80%</td><td>80.60%</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>98.60%</td><td>89.90%</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>98.90%</td><td>98.90%</td></tr></tbody></table></div>
+<div class="card"><h2>补充A: 初始资金敏感度</h2><h3>初始资金: 10,000元</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>52.30%</td><td>-30.23%</td><td>0.54%</td><td>0.7704</td><td></td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>48.70%</td><td>0.99%</td><td>-0.22%</td><td>0.7081</td><td></td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>52.80%</td><td>1.55%</td><td>0.20%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>91.00%</td><td>4.07%</td><td>4.41%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173579031936" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173579031936'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-9791.7~-9405.2", "-9405.2~-9018.8", "-9018.8~-8632.3", "-8632.3~-8245.8", "-8245.8~-7859.3", "-7859.3~-7472.8", "-7472.8~-7086.4", "-7086.4~-6699.9", "-6699.9~-6313.4", "-6313.4~-5926.9", "-5926.9~-5540.4", "-5540.4~-5154.0", "-5154.0~-4767.5", "-4767.5~-4381.0", "-4381.0~-3994.5", "-3994.5~-3608.1", "-3608.1~-3221.6", "-3221.6~-2835.1", "-2835.1~-2448.6", "-2448.6~-2062.1", "-2062.1~-1675.7", "-1675.7~-1289.2", "-1289.2~-902.7", "-902.7~-516.2", "-516.2~-129.7", "-129.7~256.7", "256.7~643.2", "643.2~1029.7", "1029.7~1416.2", "1416.2~1802.7"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 2, 22, 960, 5, 3, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 3, 4, 4, 5, 17, 41, 84, 212, 291, 181, 72, 24, 14, 7, 3, 7, 8, 5, 4, 2, 2, 2, 2, 0, 1, 0, 1, 3]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 0, 0, 1, 1, 3, 2, 14, 27, 47, 81, 140, 244, 138, 60, 58, 54, 42, 28, 13, 5, 8, 9, 1, 3, 10, 4, 4, 1, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 2, 3, 13, 18, 47, 80, 116, 95, 93, 138, 146, 135, 57, 26, 14, 7, 2, 3, 1, 0, 1, 0, 0, 0, 2]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script><h3>初始资金: 30,000元</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>58.20%</td><td>-13.71%</td><td>1.42%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>61.10%</td><td>2.53%</td><td>1.51%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>71.60%</td><td>2.64%</td><td>1.72%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>96.20%</td><td>5.31%</td><td>5.56%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173579028416" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173579028416'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-4025.7~-3855.9", "-3855.9~-3686.0", "-3686.0~-3516.2", "-3516.2~-3346.3", "-3346.3~-3176.4", "-3176.4~-3006.6", "-3006.6~-2836.7", "-2836.7~-2666.8", "-2666.8~-2497.0", "-2497.0~-2327.1", "-2327.1~-2157.2", "-2157.2~-1987.4", "-1987.4~-1817.5", "-1817.5~-1647.6", "-1647.6~-1477.8", "-1477.8~-1307.9", "-1307.9~-1138.0", "-1138.0~-968.2", "-968.2~-798.3", "-798.3~-628.4", "-628.4~-458.6", "-458.6~-288.7", "-288.7~-118.8", "-118.8~51.0", "51.0~220.9", "220.9~390.8", "390.8~560.6", "560.6~730.5", "730.5~900.4", "900.4~1070.2"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 2, 1, 4, 14, 940, 30, 1, 2, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 1, 3, 1, 4, 7, 14, 41, 65, 203, 331, 179, 42, 33, 33, 8, 5, 5, 3, 3, 8, 5, 0, 1, 0, 2, 1, 0, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [2, 1, 0, 8, 8, 19, 23, 50, 82, 161, 206, 166, 86, 32, 38, 44, 20, 13, 5, 3, 6, 5, 4, 7, 2, 5, 0, 2, 0, 2]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 0, 1, 0, 3, 13, 20, 31, 52, 87, 81, 98, 108, 134, 117, 130, 71, 21, 7, 10, 4, 5, 3, 1, 1, 0, 0, 0, 0, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script><h3>初始资金: 100,000元</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>57.30%</td><td>-101.15%</td><td>1.63%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>66.20%</td><td>3.83%</td><td>2.60%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>78.50%</td><td>3.94%</td><td>2.51%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>97.90%</td><td>5.76%</td><td>5.93%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173578308416" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173578308416'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-70810.4~-68423.5", "-68423.5~-66036.5", "-66036.5~-63649.5", "-63649.5~-61262.6", "-61262.6~-58875.6", "-58875.6~-56488.7", "-56488.7~-54101.7", "-54101.7~-51714.8", "-51714.8~-49327.8", "-49327.8~-46940.8", "-46940.8~-44553.9", "-44553.9~-42166.9", "-42166.9~-39780.0", "-39780.0~-37393.0", "-37393.0~-35006.0", "-35006.0~-32619.1", "-32619.1~-30232.1", "-30232.1~-27845.2", "-27845.2~-25458.2", "-25458.2~-23071.2", "-23071.2~-20684.3", "-20684.3~-18297.3", "-18297.3~-15910.4", "-15910.4~-13523.4", "-13523.4~-11136.5", "-11136.5~-8749.5", "-8749.5~-6362.5", "-6362.5~-3975.6", "-3975.6~-1588.6", "-1588.6~798.3"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 1, 995]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 1, 2, 2, 5, 4, 7, 22, 57, 162, 387, 182, 51, 51, 21, 12, 9, 1, 6, 2, 6, 2, 2, 1, 1, 1, 1, 0, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 0, 2, 4, 3, 7, 8, 15, 44, 82, 162, 237, 149, 76, 42, 51, 37, 20, 4, 2, 7, 6, 11, 9, 9, 4, 2, 4, 1, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [2, 4, 1, 5, 8, 31, 70, 97, 88, 108, 170, 127, 144, 83, 32, 12, 7, 2, 1, 1, 1, 2, 0, 1, 1, 1, 0, 0, 0, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script><h3>初始资金: 500,000元</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>61.20%</td><td>-4992.29%</td><td>2.03%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>68.60%</td><td>4.18%</td><td>2.51%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>82.80%</td><td>4.37%</td><td>2.67%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>98.10%</td><td>5.90%</td><td>6.04%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173577995904" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173577995904'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-5010109.8~-4834941.0", "-4834941.0~-4659772.2", "-4659772.2~-4484603.3", "-4484603.3~-4309434.5", "-4309434.5~-4134265.7", "-4134265.7~-3959096.8", "-3959096.8~-3783928.0", "-3783928.0~-3608759.2", "-3608759.2~-3433590.3", "-3433590.3~-3258421.5", "-3258421.5~-3083252.7", "-3083252.7~-2908083.8", "-2908083.8~-2732915.0", "-2732915.0~-2557746.2", "-2557746.2~-2382577.3", "-2382577.3~-2207408.5", "-2207408.5~-2032239.7", "-2032239.7~-1857070.8", "-1857070.8~-1681902.0", "-1681902.0~-1506733.1", "-1506733.1~-1331564.3", "-1331564.3~-1156395.5", "-1156395.5~-981226.6", "-981226.6~-806057.8", "-806057.8~-630889.0", "-630889.0~-455720.1", "-455720.1~-280551.3", "-280551.3~-105382.5", "-105382.5~69786.4", "69786.4~244955.2"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 997, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 1, 3, 5, 10, 27, 71, 361, 342, 75, 34, 22, 12, 9, 9, 2, 6, 2, 3, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [2, 0, 6, 9, 15, 20, 52, 118, 256, 193, 102, 39, 37, 38, 38, 14, 5, 6, 5, 8, 6, 9, 8, 5, 1, 3, 3, 0, 1, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 2, 2, 11, 33, 75, 112, 83, 97, 170, 143, 145, 68, 23, 13, 10, 2, 2, 1, 0, 1, 0, 0, 1, 0, 0, 0, 3, 1, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>补充B: 标的数量敏感度</h2><table class="detail-table">
+        <thead><tr><th>组合</th><th>期限</th><th>样本数</th><th>中位年化收益</th><th>中位最大回撤</th></tr></thead>
+        <tbody><tr><td>2只(工行+建行)</td><td>短期(0~6个月)</td><td>1000</td><td>30.57%</td><td>-7.90%</td></tr><tr><td>2只(工行+建行)</td><td>中期(7~12个月)</td><td>1000</td><td>26.87%</td><td>-11.70%</td></tr><tr><td>2只(工行+建行)</td><td>中长期(12~24个月)</td><td>1000</td><td>21.90%</td><td>-16.21%</td></tr><tr><td>2只(工行+建行)</td><td>长期(>24个月)</td><td>1000</td><td>25.14%</td><td>-22.30%</td></tr><tr><td>4只(工建农中)</td><td>短期(0~6个月)</td><td>1000</td><td>27.56%</td><td>-7.46%</td></tr><tr><td>4只(工建农中)</td><td>中期(7~12个月)</td><td>1000</td><td>24.24%</td><td>-10.45%</td></tr><tr><td>4只(工建农中)</td><td>中长期(12~24个月)</td><td>1000</td><td>19.84%</td><td>-12.90%</td></tr><tr><td>4只(工建农中)</td><td>长期(>24个月)</td><td>1000</td><td>27.19%</td><td>-18.85%</td></tr><tr><td>5只(前5大行)</td><td>短期(0~6个月)</td><td>1000</td><td>26.95%</td><td>-7.22%</td></tr><tr><td>5只(前5大行)</td><td>中期(7~12个月)</td><td>1000</td><td>24.71%</td><td>-10.76%</td></tr><tr><td>5只(前5大行)</td><td>中长期(12~24个月)</td><td>1000</td><td>21.95%</td><td>-12.36%</td></tr><tr><td>5只(前5大行)</td><td>长期(>24个月)</td><td>1000</td><td>27.54%</td><td>-17.72%</td></tr><tr><td>6只(全部)</td><td>短期(0~6个月)</td><td>1000</td><td>28.88%</td><td>-7.50%</td></tr><tr><td>6只(全部)</td><td>中期(7~12个月)</td><td>1000</td><td>25.50%</td><td>-10.24%</td></tr><tr><td>6只(全部)</td><td>中长期(12~24个月)</td><td>1000</td><td>23.25%</td><td>-12.40%</td></tr><tr><td>6只(全部)</td><td>长期(>24个月)</td><td>1000</td><td>27.13%</td><td>-17.15%</td></tr></tbody></table></div>
+<div class="card"><h2>补充C: 市场环境分环境</h2><table class="detail-table">
+        <thead><tr><th>期限</th><th>环境</th><th>样本数</th><th>策略胜率</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>牛市</td><td>7</td><td>71.43%</td></tr><tr><td>短期(0~6个月)</td><td>熊市</td><td>3</td><td>100.00%</td></tr><tr><td>短期(0~6个月)</td><td>震荡</td><td>990</td><td>62.53%</td></tr><tr><td>中期(7~12个月)</td><td>牛市</td><td>56</td><td>75.00%</td></tr><tr><td>中期(7~12个月)</td><td>熊市</td><td>11</td><td>81.82%</td></tr><tr><td>中期(7~12个月)</td><td>震荡</td><td>933</td><td>62.17%</td></tr><tr><td>中长期(12~24个月)</td><td>牛市</td><td>124</td><td>74.19%</td></tr><tr><td>中长期(12~24个月)</td><td>熊市</td><td>29</td><td>100.00%</td></tr><tr><td>中长期(12~24个月)</td><td>震荡</td><td>847</td><td>72.26%</td></tr><tr><td>长期(>24个月)</td><td>牛市</td><td>294</td><td>97.96%</td></tr><tr><td>长期(>24个月)</td><td>熊市</td><td>18</td><td>100.00%</td></tr><tr><td>长期(>24个月)</td><td>震荡</td><td>688</td><td>95.06%</td></tr></tbody></table></div>
+<div class="card"><h2>补充D: 分红处理方式对比</h2><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>18.00%</td><td>0.14%</td><td>0.00%</td><td>0.7650</td><td></td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>46.60%</td><td>0.08%</td><td>0.00%</td><td>0.0040</td><td>**</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>56.20%</td><td>0.11%</td><td>0.05%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>61.40%</td><td>0.10%</td><td>0.07%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173585504832" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173585504832'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-111.8~-102.9", "-102.9~-94.1", "-94.1~-85.2", "-85.2~-76.3", "-76.3~-67.5", "-67.5~-58.6", "-58.6~-49.8", "-49.8~-40.9", "-40.9~-32.0", "-32.0~-23.2", "-23.2~-14.3", "-14.3~-5.5", "-5.5~3.4", "3.4~12.2", "12.2~21.1", "21.1~30.0", "30.0~38.8", "38.8~47.7", "47.7~56.5", "56.5~65.4", "65.4~74.3", "74.3~83.1", "83.1~92.0", "92.0~100.8", "100.8~109.7", "109.7~118.5", "118.5~127.4", "127.4~136.3", "136.3~145.1", "145.1~154.0"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 7, 969, 12, 4, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 0, 0, 1, 1, 2, 0, 2, 3, 12, 29, 528, 358, 30, 13, 13, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 1, 1, 1, 2, 0, 4, 0, 9, 6, 9, 15, 37, 124, 417, 208, 73, 37, 23, 11, 5, 3, 4, 2, 2, 2, 2, 0, 0, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 0, 1, 1, 0, 0, 2, 3, 9, 22, 58, 108, 195, 286, 165, 84, 37, 22, 3, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>补充E: 交易成本敏感度</h2><h3>免5(0.5起)</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>58.30%</td><td>-27664.03%</td><td>1.44%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>65.20%</td><td>2.79%</td><td>1.69%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>75.60%</td><td>3.31%</td><td>1.94%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>95.90%</td><td>5.56%</td><td>5.71%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173579549760" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173579549760'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-26287006.1~-25410733.4", "-25410733.4~-24534460.7", "-24534460.7~-23658188.1", "-23658188.1~-22781915.4", "-22781915.4~-21905642.7", "-21905642.7~-21029370.0", "-21029370.0~-20153097.3", "-20153097.3~-19276824.6", "-19276824.6~-18400552.0", "-18400552.0~-17524279.3", "-17524279.3~-16648006.6", "-16648006.6~-15771733.9", "-15771733.9~-14895461.2", "-14895461.2~-14019188.5", "-14019188.5~-13142915.9", "-13142915.9~-12266643.2", "-12266643.2~-11390370.5", "-11390370.5~-10514097.8", "-10514097.8~-9637825.1", "-9637825.1~-8761552.4", "-8761552.4~-7885279.8", "-7885279.8~-7009007.1", "-7009007.1~-6132734.4", "-6132734.4~-5256461.7", "-5256461.7~-4380189.0", "-4380189.0~-3503916.3", "-3503916.3~-2627643.7", "-2627643.7~-1751371.0", "-1751371.0~-875098.3", "-875098.3~1174.4"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 998]}, {"name": "中期(7~12个月)", "type": "bar", "data": [2, 1, 0, 2, 0, 4, 8, 9, 29, 50, 106, 355, 278, 53, 35, 21, 12, 5, 7, 4, 1, 5, 2, 1, 2, 1, 1, 1, 2, 3]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [2, 2, 2, 2, 6, 9, 14, 27, 65, 100, 227, 209, 111, 48, 25, 43, 33, 10, 9, 8, 4, 11, 8, 5, 5, 3, 5, 3, 1, 3]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 0, 2, 5, 15, 28, 48, 98, 98, 118, 166, 163, 139, 62, 16, 19, 8, 4, 4, 2, 0, 0, 1, 0, 0, 0, 0, 0, 1, 2]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script><h3>不免5(5起)</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>32.60%</td><td>-239.07%</td><td>-2.77%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>18.50%</td><td>-5.58%</td><td>-4.31%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>15.70%</td><td>-4.26%</td><td>-3.66%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>51.90%</td><td>0.08%</td><td>0.12%</td><td>0.0646</td><td></td></tr></tbody></table><div id="chart_2173579555520" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173579555520'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-150964.4~-145907.3", "-145907.3~-140850.2", "-140850.2~-135793.0", "-135793.0~-130735.9", "-130735.9~-125678.8", "-125678.8~-120621.7", "-120621.7~-115564.5", "-115564.5~-110507.4", "-110507.4~-105450.3", "-105450.3~-100393.1", "-100393.1~-95336.0", "-95336.0~-90278.9", "-90278.9~-85221.8", "-85221.8~-80164.6", "-80164.6~-75107.5", "-75107.5~-70050.4", "-70050.4~-64993.3", "-64993.3~-59936.1", "-59936.1~-54879.0", "-54879.0~-49821.9", "-49821.9~-44764.7", "-44764.7~-39707.6", "-39707.6~-34650.5", "-34650.5~-29593.4", "-29593.4~-24536.2", "-24536.2~-19479.1", "-19479.1~-14422.0", "-14422.0~-9364.8", "-9364.8~-4307.7", "-4307.7~749.4"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 996]}, {"name": "中期(7~12个月)", "type": "bar", "data": [2, 1, 1, 0, 0, 3, 1, 2, 4, 9, 11, 13, 38, 41, 84, 237, 331, 156, 33, 13, 8, 6, 2, 1, 1, 1, 0, 0, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 1, 1, 2, 6, 4, 3, 3, 10, 8, 31, 27, 40, 59, 66, 93, 170, 180, 113, 47, 60, 45, 16, 6, 5, 2, 0, 0, 0, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 1, 0, 1, 5, 3, 5, 4, 3, 12, 15, 27, 33, 41, 71, 65, 82, 82, 90, 81, 60, 76, 91, 62, 46, 19, 10, 9, 2, 3]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script><h3>高佣金(万3,5起)</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>31.70%</td><td>-24.40%</td><td>-3.02%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>20.10%</td><td>-5.37%</td><td>-4.16%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>14.40%</td><td>-4.26%</td><td>-3.57%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>56.00%</td><td>0.28%</td><td>0.45%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173579270656" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173579270656'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-5841.3~-5620.3", "-5620.3~-5399.4", "-5399.4~-5178.5", "-5178.5~-4957.6", "-4957.6~-4736.7", "-4736.7~-4515.7", "-4515.7~-4294.8", "-4294.8~-4073.9", "-4073.9~-3853.0", "-3853.0~-3632.0", "-3632.0~-3411.1", "-3411.1~-3190.2", "-3190.2~-2969.3", "-2969.3~-2748.3", "-2748.3~-2527.4", "-2527.4~-2306.5", "-2306.5~-2085.6", "-2085.6~-1864.7", "-1864.7~-1643.7", "-1643.7~-1422.8", "-1422.8~-1201.9", "-1201.9~-981.0", "-981.0~-760.0", "-760.0~-539.1", "-539.1~-318.2", "-318.2~-97.3", "-97.3~123.6", "123.6~344.6", "344.6~565.5", "565.5~786.4"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 0, 2, 26, 960, 2, 1, 2]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 0, 1, 3, 6, 7, 12, 12, 24, 46, 45, 131, 284, 292, 82, 27, 9, 5, 2, 6, 1, 1, 2, 0, 0, 0, 0, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 0, 1, 0, 1, 3, 4, 9, 9, 15, 23, 38, 42, 54, 88, 156, 223, 173, 63, 42, 30, 18, 1, 2, 2, 0, 0, 1, 0, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [2, 1, 1, 0, 1, 2, 3, 4, 17, 9, 24, 23, 44, 51, 53, 63, 94, 94, 69, 89, 91, 91, 79, 47, 20, 11, 3, 6, 5, 3]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>补充F: 纯再平准(无网格)</h2><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>36.40%</td><td>3371.73%</td><td>-1.68%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>40.30%</td><td>-2.40%</td><td>-1.19%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>37.00%</td><td>-1.55%</td><td>-0.97%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>13.40%</td><td>-2.46%</td><td>-2.31%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173585237056" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173585237056'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-6116.1~104691.6", "104691.6~215499.2", "215499.2~326306.9", "326306.9~437114.5", "437114.5~547922.2", "547922.2~658729.8", "658729.8~769537.5", "769537.5~880345.1", "880345.1~991152.8", "991152.8~1101960.4", "1101960.4~1212768.1", "1212768.1~1323575.7", "1323575.7~1434383.3", "1434383.3~1545191.0", "1545191.0~1655998.6", "1655998.6~1766806.3", "1766806.3~1877613.9", "1877613.9~1988421.6", "1988421.6~2099229.2", "2099229.2~2210036.9", "2210036.9~2320844.5", "2320844.5~2431652.2", "2431652.2~2542459.8", "2542459.8~2653267.5", "2653267.5~2764075.1", "2764075.1~2874882.8", "2874882.8~2985690.4", "2985690.4~3096498.0", "3096498.0~3207305.7", "3207305.7~3318113.3"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [999, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 1, 0, 0, 0, 1, 0, 0, 5, 0, 3, 5, 3, 6, 7, 9, 4, 18, 30, 47, 185, 355, 196, 48, 39, 20, 11, 5, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 1, 3, 5, 5, 11, 3, 7, 5, 7, 19, 59, 38, 75, 208, 269, 127, 57, 35, 28, 14, 9, 6, 2, 2, 4]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 0, 0, 1, 1, 1, 0, 0, 1, 2, 1, 12, 17, 56, 93, 100, 119, 125, 158, 146, 89, 39, 14, 15, 2, 2, 2, 1, 1, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>补充G: 网格最大循环次数</h2><h3>vs 循环1次</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>63.60%</td><td>114.76%</td><td>0.73%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>84.40%</td><td>4.31%</td><td>1.85%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>87.70%</td><td>3.08%</td><td>1.71%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>98.70%</td><td>2.33%</td><td>2.01%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173581788672" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173581788672'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-478.3~2200.9", "2200.9~4880.1", "4880.1~7559.3", "7559.3~10238.5", "10238.5~12917.7", "12917.7~15596.9", "15596.9~18276.2", "18276.2~20955.4", "20955.4~23634.6", "23634.6~26313.8", "26313.8~28993.0", "28993.0~31672.2", "31672.2~34351.4", "34351.4~37030.7", "37030.7~39709.9", "39709.9~42389.1", "42389.1~45068.3", "45068.3~47747.5", "47747.5~50426.7", "50426.7~53105.9", "53105.9~55785.2", "55785.2~58464.4", "58464.4~61143.6", "61143.6~63822.8", "63822.8~66502.0", "66502.0~69181.2", "69181.2~71860.4", "71860.4~74539.7", "74539.7~77218.9", "77218.9~79898.1"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [996, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [7, 32, 344, 371, 139, 49, 8, 5, 3, 2, 3, 4, 6, 4, 1, 2, 3, 1, 0, 1, 5, 1, 2, 3, 2, 0, 0, 0, 1, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [7, 28, 77, 261, 273, 146, 76, 26, 21, 14, 11, 6, 4, 2, 4, 3, 5, 4, 4, 4, 4, 5, 5, 1, 3, 3, 1, 0, 1, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [7, 51, 158, 291, 266, 123, 42, 14, 15, 7, 4, 5, 2, 3, 0, 2, 2, 1, 0, 1, 0, 1, 0, 0, 1, 0, 2, 0, 1, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script><h3>vs 循环10次</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>1.10%</td><td>-37.64%</td><td>0.00%</td><td>0.0001</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>2.10%</td><td>-0.24%</td><td>0.00%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>3.10%</td><td>-0.09%</td><td>0.00%</td><td>0.0012</td><td>**</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>3.30%</td><td>-0.03%</td><td>0.00%</td><td>0.0274</td><td>*</td></tr></tbody></table><div id="chart_2173578133888" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173578133888'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-24626.4~-23805.0", "-23805.0~-22983.6", "-22983.6~-22162.2", "-22162.2~-21340.8", "-21340.8~-20519.4", "-20519.4~-19698.0", "-19698.0~-18876.6", "-18876.6~-18055.2", "-18055.2~-17233.8", "-17233.8~-16412.5", "-16412.5~-15591.1", "-15591.1~-14769.7", "-14769.7~-13948.3", "-13948.3~-13126.9", "-13126.9~-12305.5", "-12305.5~-11484.1", "-11484.1~-10662.7", "-10662.7~-9841.3", "-9841.3~-9019.9", "-9019.9~-8198.6", "-8198.6~-7377.2", "-7377.2~-6555.8", "-6555.8~-5734.4", "-5734.4~-4913.0", "-4913.0~-4091.6", "-4091.6~-3270.2", "-3270.2~-2448.8", "-2448.8~-1627.4", "-1627.4~-806.0", "-806.0~15.3"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 996]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 1, 3, 1, 4, 2, 1, 3, 4, 6, 6, 6, 15, 933, 4, 5, 1, 1, 0, 0, 1, 0, 0, 0, 2]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 1, 0, 0, 0, 0, 0, 0, 2, 4, 2, 5, 5, 2, 11, 8, 8, 926, 9, 5, 3, 1, 2, 2, 0, 2, 0, 0, 0, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [2, 0, 0, 0, 0, 0, 3, 2, 1, 1, 1, 2, 0, 5, 3, 6, 3, 8, 6, 933, 7, 6, 3, 1, 2, 1, 3, 0, 0, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>补充H: 大范围网格步长扫描</h2><table class="detail-table">
+        <thead><tr><th>网格步长</th><th>期限</th><th>样本数</th><th>中位年化收益</th><th>vs持有胜率</th><th>中位超额</th></tr></thead>
+        <tbody><tr><td>卖1%买0.5%</td><td>短期(0~6个月)</td><td>1000</td><td>34.59%</td><td>72.10%</td><td>7.05%</td></tr><tr><td>卖1%买0.5%</td><td>中期(7~12个月)</td><td>1000</td><td>27.80%</td><td>80.30%</td><td>6.30%</td></tr><tr><td>卖1%买0.5%</td><td>中长期(12~24个月)</td><td>1000</td><td>25.88%</td><td>97.10%</td><td>7.02%</td></tr><tr><td>卖1%买0.5%</td><td>长期(>24个月)</td><td>1000</td><td>32.70%</td><td>100.00%</td><td>11.82%</td></tr><tr><td>卖2%买1%</td><td>短期(0~6个月)</td><td>1000</td><td>27.96%</td><td>67.10%</td><td>3.53%</td></tr><tr><td>卖2%买1%</td><td>中期(7~12个月)</td><td>1000</td><td>24.39%</td><td>68.50%</td><td>2.95%</td></tr><tr><td>卖2%买1%</td><td>中长期(12~24个月)</td><td>1000</td><td>22.91%</td><td>86.90%</td><td>3.51%</td></tr><tr><td>卖2%买1%</td><td>长期(>24个月)</td><td>1000</td><td>28.91%</td><td>100.00%</td><td>7.57%</td></tr><tr><td>卖3%买2%</td><td>短期(0~6个月)</td><td>1000</td><td>27.72%</td><td>57.70%</td><td>1.22%</td></tr><tr><td>卖3%买2%</td><td>中期(7~12个月)</td><td>1000</td><td>26.48%</td><td>63.50%</td><td>1.63%</td></tr><tr><td>卖3%买2%</td><td>中长期(12~24个月)</td><td>1000</td><td>24.90%</td><td>73.70%</td><td>1.96%</td></tr><tr><td>卖3%买2%</td><td>长期(>24个月)</td><td>1000</td><td>27.53%</td><td>96.80%</td><td>5.70%</td></tr><tr><td>卖5%买3%</td><td>短期(0~6个月)</td><td>1000</td><td>27.24%</td><td>54.80%</td><td>0.37%</td></tr><tr><td>卖5%买3%</td><td>中期(7~12个月)</td><td>1000</td><td>23.32%</td><td>61.40%</td><td>0.88%</td></tr><tr><td>卖5%买3%</td><td>中长期(12~24个月)</td><td>1000</td><td>19.77%</td><td>70.70%</td><td>1.25%</td></tr><tr><td>卖5%买3%</td><td>长期(>24个月)</td><td>1000</td><td>25.73%</td><td>92.50%</td><td>3.61%</td></tr><tr><td>卖8%买5%</td><td>短期(0~6个月)</td><td>1000</td><td>24.01%</td><td>56.10%</td><td>0.23%</td></tr><tr><td>卖8%买5%</td><td>中期(7~12个月)</td><td>1000</td><td>23.33%</td><td>67.40%</td><td>0.92%</td></tr><tr><td>卖8%买5%</td><td>中长期(12~24个月)</td><td>1000</td><td>21.98%</td><td>79.00%</td><td>1.51%</td></tr><tr><td>卖8%买5%</td><td>长期(>24个月)</td><td>1000</td><td>26.69%</td><td>97.30%</td><td>4.06%</td></tr></tbody></table></div>
+<div class="card"><h2>补充I: 滑点影响测试</h2><h3>vs 0.1%滑点</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>31.10%</td><td>0.29%</td><td>0.00%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>47.60%</td><td>0.29%</td><td>0.00%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>59.50%</td><td>0.22%</td><td>0.01%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>80.00%</td><td>0.46%</td><td>0.37%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173578246464" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173578246464'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-11.9~-10.6", "-10.6~-9.3", "-9.3~-8.0", "-8.0~-6.7", "-6.7~-5.5", "-5.5~-4.2", "-4.2~-2.9", "-2.9~-1.6", "-1.6~-0.3", "-0.3~0.9", "0.9~2.2", "2.2~3.5", "3.5~4.8", "4.8~6.1", "6.1~7.4", "7.4~8.6", "8.6~9.9", "9.9~11.2", "11.2~12.5", "12.5~13.8", "13.8~15.0", "15.0~16.3", "16.3~17.6", "17.6~18.9", "18.9~20.2", "20.2~21.5", "21.5~22.7", "22.7~24.0", "24.0~25.3", "25.3~26.6"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 1, 2, 9, 42, 836, 69, 23, 6, 4, 2, 2, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 0, 1, 1, 1, 1, 5, 3, 7, 27, 608, 152, 72, 42, 28, 16, 15, 9, 2, 2, 1, 1, 1, 1, 0, 0, 2, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 0, 1, 0, 0, 0, 0, 1, 0, 2, 3, 4, 9, 10, 13, 19, 47, 511, 162, 55, 53, 32, 30, 13, 11, 9, 5, 2, 5, 2]}, {"name": "长期(>24个月)", "type": "bar", "data": [3, 4, 4, 2, 3, 7, 10, 8, 22, 36, 71, 184, 119, 106, 85, 73, 58, 57, 54, 30, 17, 14, 5, 6, 7, 1, 4, 5, 1, 4]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script><h3>vs 0.2%滑点</h3><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>85.90%</td><td>6.98%</td><td>1.67%</td><td>0.0000</td><td>***</td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>92.10%</td><td>2.69%</td><td>2.18%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>94.40%</td><td>2.44%</td><td>2.44%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>99.80%</td><td>2.54%</td><td>2.51%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173581790528" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173581790528'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-363.2~-257.8", "-257.8~-152.5", "-152.5~-47.2", "-47.2~58.2", "58.2~163.5", "163.5~268.8", "268.8~374.2", "374.2~479.5", "479.5~584.8", "584.8~690.2", "690.2~795.5", "795.5~900.8", "900.8~1006.2", "1006.2~1111.5", "1111.5~1216.8", "1216.8~1322.2", "1322.2~1427.5", "1427.5~1532.8", "1532.8~1638.2", "1638.2~1743.5", "1743.5~1848.8", "1848.8~1954.2", "1954.2~2059.5", "2059.5~2164.8", "2164.8~2270.2", "2270.2~2375.5", "2375.5~2480.8", "2480.8~2586.2", "2586.2~2691.5", "2691.5~2796.8"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [1, 0, 0, 989, 6, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 2, 2, 5, 7, 22, 149, 281, 241, 136, 80, 24, 17, 10, 6, 4, 3, 2, 2, 1, 2, 0, 1, 0, 0, 0, 1, 0, 0, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 2, 1, 2, 2, 5, 3, 6, 15, 24, 69, 104, 132, 140, 161, 133, 78, 49, 27, 20, 13, 5, 3, 2, 1, 0, 1, 0, 0, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [1, 1, 0, 0, 4, 5, 3, 7, 20, 20, 37, 62, 65, 64, 98, 108, 107, 76, 87, 60, 59, 33, 26, 19, 15, 9, 5, 5, 2, 2]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>补充J: 永不再平准(纯网格)</h2><table class="detail-table">
+        <thead><tr><th>期限</th><th>样本数</th><th>胜率</th><th>平均超额</th><th>中位超额</th><th>p值</th><th>显著性</th></tr></thead>
+        <tbody><tr><td>短期(0~6个月)</td><td>1000</td><td>47.60%</td><td>4373199.69%</td><td>-0.01%</td><td>0.3873</td><td></td></tr><tr><td>中期(7~12个月)</td><td>1000</td><td>50.40%</td><td>3.70%</td><td>0.14%</td><td>0.0000</td><td>***</td></tr><tr><td>中长期(12~24个月)</td><td>1000</td><td>58.00%</td><td>4.79%</td><td>1.50%</td><td>0.0000</td><td>***</td></tr><tr><td>长期(>24个月)</td><td>1000</td><td>82.20%</td><td>8.71%</td><td>9.69%</td><td>0.0000</td><td>***</td></tr></tbody></table><div id="chart_2173578299008" style="width:100%;height:400px;"></div>
+    <script>
+    (function() {
+        var chart = echarts.init(document.getElementById('chart_2173578299008'), 'dark');
+        chart.setOption({"title": {"text": "超额收益分布", "textStyle": {"color": "#e0e0e0"}}, "tooltip": {}, "legend": {"textStyle": {"color": "#aaa"}}, "xAxis": {"type": "category", "data": ["-165.3~145772922.3", "145772922.3~291546009.9", "291546009.9~437319097.5", "437319097.5~583092185.2", "583092185.2~728865272.8", "728865272.8~874638360.4", "874638360.4~1020411448.0", "1020411448.0~1166184535.6", "1166184535.6~1311957623.2", "1311957623.2~1457730710.8", "1457730710.8~1603503798.4", "1603503798.4~1749276886.0", "1749276886.0~1895049973.6", "1895049973.6~2040823061.2", "2040823061.2~2186596148.8", "2186596148.8~2332369236.4", "2332369236.4~2478142324.0", "2478142324.0~2623915411.6", "2623915411.6~2769688499.2", "2769688499.2~2915461586.9", "2915461586.9~3061234674.5", "3061234674.5~3207007762.1", "3207007762.1~3352780849.7", "3352780849.7~3498553937.3", "3498553937.3~3644327024.9", "3644327024.9~3790100112.5", "3790100112.5~3935873200.1", "3935873200.1~4081646287.7", "4081646287.7~4227419375.3", "4227419375.3~4373192462.9"], "axisLabel": {"color": "#aaa"}}, "yAxis": {"type": "value", "axisLabel": {"color": "#aaa"}}, "series": [{"name": "短期(0~6个月)", "type": "bar", "data": [999, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, {"name": "中期(7~12个月)", "type": "bar", "data": [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 2, 35, 55, 115, 369, 148, 49, 87, 67, 39, 21, 6, 2, 1]}, {"name": "中长期(12~24个月)", "type": "bar", "data": [1, 0, 2, 0, 2, 1, 1, 14, 12, 33, 46, 52, 143, 143, 106, 75, 68, 52, 18, 42, 52, 45, 31, 21, 17, 10, 10, 1, 1, 1]}, {"name": "长期(>24个月)", "type": "bar", "data": [2, 4, 10, 20, 8, 24, 35, 57, 40, 25, 39, 45, 45, 61, 65, 64, 90, 68, 68, 60, 45, 35, 31, 18, 15, 13, 6, 2, 4, 1]}]});
+        window.addEventListener('resize', function() { chart.resize(); });
+    })();
+    </script></div>
+<div class="card"><h2>补充K: 蒙特卡洛收敛性验证</h2><table class="detail-table">
+        <thead><tr><th>样本数</th><th>期限</th><th>有效样本</th><th>胜率</th><th>中位超额</th><th>方差</th><th>p值</th></tr></thead>
+        <tbody><tr><td>200</td><td>中长期(12~24个月)</td><td>200</td><td>75.50%</td><td>2.13%</td><td>44.2060</td><td>0.0000</td></tr><tr><td>500</td><td>中长期(12~24个月)</td><td>500</td><td>77.00%</td><td>2.07%</td><td>48.2711</td><td>0.0000</td></tr><tr><td>1000</td><td>中长期(12~24个月)</td><td>1000</td><td>74.70%</td><td>1.91%</td><td>45.8642</td><td>0.0000</td></tr><tr><td>2000</td><td>中长期(12~24个月)</td><td>2000</td><td>73.95%</td><td>1.91%</td><td>46.2946</td><td>0.0000</td></tr></tbody></table>
+        <p class="note">若200样本与2000样本的胜率差异<5%，说明1000样本已充分收敛。</p></div>
+<div class="card"><h2>补充L: 极端行情压力测试</h2><table class="detail-table">
+        <thead><tr><th>时段</th><th>交易日</th><th>策略年化</th><th>持有年化</th><th>超额收益</th><th>策略回撤</th><th>持有回撤</th><th>交易次数</th></tr></thead>
+        <tbody><tr><td>2015年股灾</td><td>53</td><td>-90.81%</td><td>-95.34%</td><td style="color:#2ecc71;font-weight:bold">4.53%</td><td>-57.11%</td><td>-61.00%</td><td>359</td></tr><tr><td>2018年熊市</td><td>230</td><td>-25.47%</td><td>-29.23%</td><td style="color:#2ecc71;font-weight:bold">3.77%</td><td>-39.83%</td><td>-43.50%</td><td>398</td></tr><tr><td>2020年新冠</td><td>58</td><td>-51.70%</td><td>-52.63%</td><td style="color:#2ecc71;font-weight:bold">0.93%</td><td>-19.14%</td><td>-19.47%</td><td>32</td></tr><tr><td>2022年回调</td><td>199</td><td>9.23%</td><td>7.27%</td><td style="color:#2ecc71;font-weight:bold">1.96%</td><td>-9.47%</td><td>-12.04%</td><td>176</td></tr></tbody></table></div>
+
+    <div class="card conclusion">
+        <h2>综合结论</h2>
+        <h3>关键发现</h3>
+        <ul><li>短期(0~6个月)策略胜率57.6%</li><li>中期(7~12个月)策略胜率63.4%</li><li>中长期(12~24个月)策略胜率73.8%</li><li>长期(>24个月)策略胜率96.9%</li><li>短期(0~6个月)抗跌胜率85.0%，夏普胜率73.3%</li><li>中期(7~12个月)抗跌胜率91.8%，夏普胜率80.6%</li><li>中长期(12~24个月)抗跌胜率98.6%，夏普胜率89.9%</li><li>长期(>24个月)抗跌胜率98.9%，夏普胜率98.9%</li></ul>
+        <h3>策略参数推荐</h3>
+        <p>基于蒙特卡洛随机回测结果，策略参数推荐如下：</p>
+        <ul>
+            <li>网格阈值：卖3%买2%（偏向持股、晚止盈）在大多数期限下优于对称网格</li>
+            <li>调仓比例：单次20%仓位在风险收益比上较为均衡</li>
+            <li>再平准频率：月度再平准在多数场景下获得最高收益胜率</li>
+            <li>最低底仓：50%底仓在保护收益与灵活调仓间取得较好平衡</li>
+        </ul>
+        <h3>风险提示</h3>
+        <ul>
+            <li>历史回测不代表未来表现，策略在极端市场环境下可能失效</li>
+            <li>网格策略在单边趋势市场中可能持续卖出（上涨）或买入（下跌），需关注底仓保护</li>
+            <li>小资金账户手续费占比更高，实际收益可能低于回测</li>
+            <li>本回测基于前复权数据，未考虑复权误差和实际成交差异</li>
+        </ul>
+    </div>
+    
+    <div class="card optimal-strategy">
+        <h2>策略最优操作指南</h2>
+
+        <h3>一、最优参数组合</h3>
+        <table class="detail-table">
+            <thead><tr><th>参数</th><th>最优值</th><th>依据</th></tr></thead>
+            <tbody>
+                <tr><td>标的池</td><td>6大行动态池(5/6大行)</td><td>补充B: 4~6只分散化降低回撤，长期收益相近</td></tr>
+                <tr><td>再平准频率</td><td>月度</td><td>实验4: 月度全面碾压季度/年度</td></tr>
+                <tr><td>网格卖出触发</td><td>卖1%买0.5%</td><td>实验5/补充H: 偏向持股/晚止盈策略更优</td></tr>
+                <tr><td>单次调仓比例</td><td>20%</td><td>实验3: 20%在风险收益比上最优</td></tr>
+                <tr><td>最低底仓比例</td><td>50%</td><td>实验6: 50%在保护与灵活间最优</td></tr>
+                <tr><td>初始资金</td><td>≥30,000元</td><td>补充A: 3万以上各期限均显著为正</td></tr>
+                <tr><td>佣金模式</td><td>免5(0.5元起)</td><td>补充E: 不免5策略几乎失效</td></tr>
+                <tr><td>分红处理</td><td>落袋为安</td><td>补充D: 再投资优势极微</td></tr>
+                <tr><td>网格最大循环</td><td>1次/日（更保守）</td><td>补充G验证</td></tr>
+                <tr><td>滑点</td><td>无滑点（银行股流动性好）</td><td>补充I验证</td></tr>
+            </tbody>
+        </table>
+
+        <h3>二、策略组件贡献拆解</h3>
+        <ul>
+            <li>纯再平准(无网格) vs 再平准+网格 长期胜率仅13.4%，网格贡献巨大</li>
+            <li>月度再平准+网格 vs 永不再平准+网格 长期胜率82.2%</li>
+        </ul>
+
+        <h3>三、蒙特卡洛收敛性</h3>
+        <p>200样本胜率75.5% vs 2000样本74.0%，差异1.5%，1000样本已充分收敛</p>
+
+        <h3>极端行情压力测试</h3>
+        <table class="detail-table">
+            <thead><tr><th>时段</th><th>策略回撤</th><th>持有回撤</th><th>超额收益</th></tr></thead>
+            <tbody><tr><td>2015年股灾</td><td>-57.11%</td><td>-61.00%</td><td style="color:#2ecc71;font-weight:bold">4.53%</td></tr><tr><td>2018年熊市</td><td>-39.83%</td><td>-43.50%</td><td style="color:#2ecc71;font-weight:bold">3.77%</td></tr><tr><td>2020年新冠</td><td>-19.14%</td><td>-19.47%</td><td style="color:#2ecc71;font-weight:bold">0.93%</td></tr><tr><td>2022年回调</td><td>-9.47%</td><td>-12.04%</td><td style="color:#2ecc71;font-weight:bold">1.96%</td></tr></tbody></table>
+
+        <h3>四、详细操作规则</h3>
+
+        <h4>第一阶段：建仓（第1个交易日）</h4>
+        <ol>
+            <li><strong>资金分配</strong>: 将初始资金等分为N份（N=标的数量）
+                <ul>
+                    <li>2019-12-10前: N=5（工、农、中、建、交）</li>
+                    <li>2019-12-10后: N=6（含邮储）</li>
+                </ul>
+            </li>
+            <li><strong>买入方式</strong>: 每只银行以收盘价买入最接近目标金额的整百股</li>
+            <li><strong>记录基准价</strong>: 每只股票的 base_p = 建仓收盘价</li>
+        </ol>
+
+        <h4>第二阶段：日常网格交易（每个交易日）</h4>
+        <div class="rule-box">
+            <p><strong>网格卖出规则:</strong></p>
+            <ul>
+                <li>条件: 当日最高价 ≥ base_p × (1 + 卖出触发%)</li>
+                <li>执行价: max(开盘价, base_p × (1 + 卖出触发%))，四舍五入到0.01</li>
+                <li>卖出数量: 当前持仓 × 20%，取整百股</li>
+                <li>限制: 卖出后持仓 ≥ 初始持仓 × 50%（最低底仓线）</li>
+                <li>费用: 佣金(万0.854, 最低0.5) + 印花税(万5) + 红利税(FIFO)</li>
+                <li>更新: base_p = 执行价</li>
+                <li>循环: 最多5次/日</li>
+            </ul>
+        </div>
+        <div class="rule-box">
+            <p><strong>网格买入规则:</strong></p>
+            <ul>
+                <li>条件: 当日最低价 ≤ base_p × (1 - 买入触发%)</li>
+                <li>执行价: min(开盘价, base_p × (1 - 买入触发%))，四舍五入到0.01</li>
+                <li>买入数量: 当前持仓 × 20%，取整百股</li>
+                <li>限制: 现金需足够支付买入金额+佣金</li>
+                <li>费用: 佣金(万0.854, 最低0.5)</li>
+                <li>更新: base_p = 执行价</li>
+                <li>循环: 最多5次/日</li>
+            </ul>
+        </div>
+
+        <h4>第三阶段：月度再平准（每月最后一个交易日）</h4>
+        <ol>
+            <li><strong>计算总市值</strong>: 总市值 = 现金 + Σ(各持仓 × 收盘价)</li>
+            <li><strong>计算目标持仓</strong>: 每只目标市值 = 总市值 / N</li>
+            <li><strong>先卖后买</strong>: 先卖出超配，再买入低配</li>
+            <li><strong>重置基准价</strong>: 所有股票的 base_p = 当日收盘价</li>
+        </ol>
+
+        <h4>第四阶段：分红处理</h4>
+        <ul>
+            <li>分红收入直接计入现金（落袋为安）</li>
+            <li>红利税: 持有≤30天20%，>30天且≤365天10%，>365天免税</li>
+            <li>前复权数据下，base_p不需要因分红而调整</li>
+        </ul>
+
+        <h3>五、操作检查清单</h3>
+        <div class="checklist">
+            <p><strong>开户前:</strong></p>
+            <ul>
+                <li>☐ 确认券商免5（最低佣金0.5元），否则策略失效</li>
+                <li>☐ 初始资金≥30,000元</li>
+                <li>☐ 确认佣金率≤万1</li>
+            </ul>
+            <p><strong>建仓日:</strong></p>
+            <ul>
+                <li>☐ 等权分配资金至5/6大行</li>
+                <li>☐ 收盘前以收盘价买入整百股</li>
+                <li>☐ 记录每只股票的base_p</li>
+            </ul>
+            <p><strong>每日:</strong></p>
+            <ul>
+                <li>☐ 盘中监控网格触发（可用条件单自动执行）</li>
+                <li>☐ 卖出触发: 涨幅≥3% from base_p</li>
+                <li>☐ 买入触发: 跌幅≥2% from base_p</li>
+                <li>☐ 每次交易量为当前持仓的20%（整百股）</li>
+                <li>☐ 卖出不低于底仓线（初始持仓的50%）</li>
+            </ul>
+            <p><strong>月末再平准日:</strong></p>
+            <ul>
+                <li>☐ 计算各持仓偏离等权的程度</li>
+                <li>☐ 先卖超配，再买低配</li>
+                <li>☐ 重置所有base_p为当日收盘价</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

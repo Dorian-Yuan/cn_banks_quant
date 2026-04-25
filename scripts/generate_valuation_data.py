@@ -5,7 +5,7 @@ import os
 # 配置路径
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data", "ashare")
-OUTPUT_DIR = os.path.join(BASE_DIR, "reports", "data")
+OUTPUT_DIR = os.path.join(BASE_DIR, "research", "data")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "bank_valuation.json")
 
 # 银行映射
